@@ -1,0 +1,169 @@
+{% extends "base.html" %}
+
+{% block title %}SkillLink{% endblock %}
+
+{% block content %}
+<section class="hero hero-media-section hero-home-edge">
+	<video class="hero-media" autoplay muted loop playsinline preload="metadata" poster="{{ url_for('static', filename='media/images/stats-bg.png') }}">
+		<source src="{{ url_for('static', filename='media/videos/hero-home.mp4') }}" type="video/mp4">
+	</video>
+	<span class="hero-media-overlay" aria-hidden="true"></span>
+	<div class="hero-content">
+		<p class="hero-kicker">Collaborative Learning Marketplace</p>
+		<h1>Teach what you know. Learn what you need.</h1>
+		<p>
+			SkillLink helps peers connect through practical,
+			affordable, and community-driven learning sessions.
+		</p>
+		<div class="hero-actions">
+			<a class="btn btn-primary" href="{{ url_for('learn_skill') }}">Explore Skills</a>
+			{% if current_user %}
+			<a class="btn btn-outline" href="{{ url_for('matches') }}">Find My Matches</a>
+			{% else %}
+			<a class="btn btn-outline" href="{{ url_for('register') }}">Create Account</a>
+			{% endif %}
+		</div>
+</div>
+</section>
+
+<section class="section section-alt media-section media-features">
+	<div class="container">
+		<div class="section-title">
+			<p>Objectives</p>
+			<h2>What This System Delivers</h2>
+		</div>
+		<div class="grid-4">
+			<article class="feature-card">
+				<h4>Centralized Exchange</h4>
+				<p>One place for discovering teaching and learning opportunities.</p>
+			</article>
+			<article class="feature-card">
+				<h4>Peer-to-Peer Learning</h4>
+				<p>Students learn through direct collaboration with fellow students.</p>
+			</article>
+			<article class="feature-card">
+				<h4>Practical Skill Growth</h4>
+				<p>Build professional and technical capabilities beyond theory.</p>
+			</article>
+			<article class="feature-card">
+				<h4>Accessible Learning</h4>
+				<p>Affordable, flexible, and community powered knowledge sharing.</p>
+			</article>
+		</div>
+	</div>
+</section>
+
+<section class="section section-tight media-section media-stats">
+	<div class="container">
+		<div class="section-title">
+			<p>Platform Impact</p>
+			<h2>Live Community Snapshot</h2>
+		</div>
+		<div class="stats-grid">
+			<article class="stat-card">
+				<h3>{{ stats.total_students }}</h3>
+				<p>Registered Students</p>
+			</article>
+			<article class="stat-card">
+				<h3>{{ stats.total_teaching_offers }}</h3>
+				<p>Teaching Offers</p>
+			</article>
+			<article class="stat-card">
+				<h3>{{ stats.total_skill_topics }}</h3>
+				<p>Skill Topics</p>
+			</article>
+			<article class="stat-card">
+				<h3>{{ stats.average_rating }}</h3>
+				<p>Average Rating</p>
+			</article>
+		</div>
+	</div>
+</section>
+
+<section class="section media-section media-popular-skills">
+	<div class="container">
+		<div class="section-title">
+			<p>Skill Marketplace</p>
+			<h2>Popular Teaching Skills</h2>
+		</div>
+		<div class="grid-3">
+			{% for skill in popular_skills %}
+			<article class="skill-card">
+				<div class="skill-thumb-wrap">
+					<img class="skill-thumb-image" src="{{ url_for('static', filename=skill.thumb_file, v=skill.thumb_version) }}" alt="{{ skill.category }} skill category thumbnail" loading="lazy">
+				</div>
+				<div class="skill-top">
+					<h3>{{ skill.name }}</h3>
+					<span class="badge">{{ skill.category }}</span>
+				</div>
+				<p>{{ skill.mentor_count }} mentors currently available.</p>
+				<a class="btn btn-small btn-primary" href="{{ url_for('learn_skill', q=skill.name) }}">View Mentors</a>
+			</article>
+			{% else %}
+			<article class="panel">
+				<p>No skill listings yet. Be the first to add one.</p>
+			</article>
+			{% endfor %}
+		</div>
+	</div>
+</section>
+
+<section class="section section-alt media-section">
+	<div class="container">
+		<div class="section-title">
+			<p>Share Your Knowledge</p>
+			<h2>Become a Mentor</h2>
+			<p class="section-subtitle">Anyone can teach on SkillLink. Share what you know and help peers grow — it takes just three steps.</p>
+		</div>
+		<div class="grid-3 mentor-steps">
+			<article class="feature-card mentor-step-card">
+				<span class="mentor-step-num">01</span>
+				<h4>Create Your Profile</h4>
+				<p>Sign up and fill in your skills, experience, and a short bio so learners know what you bring.</p>
+			</article>
+			<article class="feature-card mentor-step-card">
+				<span class="mentor-step-num">02</span>
+				<h4>Add a Teaching Skill</h4>
+				<p>List the subjects you can teach — Python, Design, Communication, or anything you're confident in.</p>
+			</article>
+			<article class="feature-card mentor-step-card">
+				<span class="mentor-step-num">03</span>
+				<h4>Start a Session</h4>
+				<p>Get matched with learners, schedule a live session, and earn community recognition and ratings.</p>
+			</article>
+		</div>
+		<div class="mentor-cta">
+			{% if current_user %}
+			<a class="btn btn-primary" href="{{ url_for('profile_by_id', user_id=current_user.id) }}">Add a Teaching Skill</a>
+			{% else %}
+			<a class="btn btn-primary" href="{{ url_for('register') }}">Join as a Mentor</a>
+			<a class="btn btn-outline" href="{{ url_for('login') }}">Sign In</a>
+			{% endif %}
+		</div>
+	</div>
+</section>
+
+<section class="section section-tight media-section media-testimonials">
+	<div class="container">
+		<div class="section-title">
+			<p>Student Feedback</p>
+			<h2>Recent Reviews</h2>
+		</div>
+		<div class="grid-3">
+			{% for review in testimonials %}
+			<article class="testimonial">
+				<p class="quote">"{{ review.comment }}"</p>
+				<p class="meta">
+					<strong>{{ review.reviewer_name }}</strong> rated <strong>{{ review.reviewee_name }}</strong>
+					with {{ review.rating }}/5
+				</p>
+			</article>
+			{% else %}
+			<article class="panel">
+				<p>Complete sessions and submit reviews to build trust in the community.</p>
+			</article>
+			{% endfor %}
+		</div>
+	</div>
+</section>
+{% endblock %}

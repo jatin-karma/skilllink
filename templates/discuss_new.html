@@ -1,0 +1,45 @@
+{% extends "base.html" %}
+{% block title %}New Discussion{% endblock %}
+
+{% block content %}
+<section class="hero hero-small hero-image-section hero-image-discuss-new">
+	<div class="hero-content">
+		<p class="hero-kicker">Discussion Board</p>
+		<h1>Start a Discussion</h1>
+	</div>
+</section>
+
+<section class="section section-tight">
+	<div class="container discuss-new-container">
+		<a class="btn btn-outline btn-small discuss-back-link" href="{{ url_for('discuss') }}">← Back to Board</a>
+		<div class="panel">
+			<form method="post" action="{{ url_for('discuss_new') }}" class="stack-form">
+				<input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+				<div class="form-group">
+					<label for="topic">Topic <span class="text-danger">*</span></label>
+					<select class="input" id="topic" name="topic" required>
+						{% for item in discussion_topics %}
+						<option value="{{ item }}" {% if item == 'General' %}selected{% endif %}>{{ item }}</option>
+						{% endfor %}
+					</select>
+				</div>
+				<div class="form-group">
+					<label for="title">Topic Title <span class="text-danger">*</span></label>
+					<input class="input" id="title" name="title" type="text" maxlength="200" placeholder="What do you want to discuss?" required>
+				</div>
+				<div class="form-group">
+					<label for="tags">Tags</label>
+					<input class="input" id="tags" name="tags" type="text" maxlength="240" placeholder="python, interview, resume">
+					<p class="small-muted">Use comma-separated tags (up to 8).</p>
+				</div>
+				<div class="form-group">
+					<label for="body">Description <span class="text-danger">*</span></label>
+					<textarea class="input" id="body" name="body" rows="6" maxlength="5000" placeholder="Describe your topic in detail…" required></textarea>
+					<p class="small-muted">Max 5000 characters.</p>
+				</div>
+				<button class="btn btn-primary" type="submit">Post Discussion</button>
+			</form>
+		</div>
+	</div>
+</section>
+{% endblock %}

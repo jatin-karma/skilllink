@@ -1,0 +1,119 @@
+{% extends "base.html" %}
+
+{% block title %}Explore Skills{% endblock %}
+
+{% block content %}
+<section class="hero hero-small hero-media-section hero-find-mentors">
+	<video class="hero-media" autoplay muted loop playsinline preload="metadata" poster="{{ url_for('static', filename='media/images/stats-bg.png') }}">
+		<source src="{{ url_for('static', filename='media/videos/hero-skills.mp4') }}" type="video/mp4">
+	</video>
+	<span class="hero-media-overlay" aria-hidden="true"></span>
+	<div class="hero-content">
+		<p class="hero-kicker">Skill Search and Filtering</p>
+		<h1>Find Student Mentors</h1>
+		<p>Search by skill, category, level, and mentor rating to find the right peer match.</p>
+	</div>
+</section>
+
+<section class="section section-tight">
+	<div class="container">
+		<form class="panel filter-form" method="get" action="{{ url_for('skills') }}">
+			<div class="form-grid-4">
+				<div class="form-group">
+					<label for="q">Search</label>
+					<input id="q" name="q" type="text" value="{{ filters.q }}" placeholder="Python, Design, mentor name">
+				</div>
+				<div class="form-group">
+					<label for="category">Category</label>
+					<select id="category" name="category">
+						<option value="">All categories</option>
+						{% for category_row in categories %}
+						<option value="{{ category_row.category }}" {% if filters.category == category_row.category %}selected{% endif %}>
+							{{ category_row.category }}
+						</option>
+						{% endfor %}
+					</select>
+				</div>
+				<div class="form-group">
+					<label for="level">Level</label>
+					<select id="level" name="level">
+						<option value="">All levels</option>
+						{% for item in skill_levels %}
+						<option value="{{ item }}" {% if filters.level == item %}selected{% endif %}>{{ item }}</option>
+						{% endfor %}
+					</select>
+				</div>
+				<div class="form-group">
+					<label for="min_rating">Min Rating</label>
+					<input id="min_rating" name="min_rating" type="number" min="0" max="5" step="0.1" value="{{ filters.min_rating }}" placeholder="e.g. 4.0">
+				</div>
+			</div>
+			<div class="hero-actions">
+				<button class="btn btn-primary" type="submit">Apply Filters</button>
+				<a class="btn btn-outline" href="{{ url_for('skills') }}">Reset</a>
+			</div>
+		</form>
+	</div>
+</section>
+
+<section class="section">
+	<div class="container">
+		<div class="section-title left">
+			<p>Skill Listings</p>
+			<h2>{{ skills|length }} Mentoring Options Found</h2>
+		</div>
+
+		<div class="grid-3">
+			{% for skill in skills %}
+			<article class="skill-card">
+				<div class="skill-top">
+					<h3>{{ skill.name }}</h3>
+					<span class="badge">{{ skill.category }}</span>
+				</div>
+				<p class="small-muted">Level: {{ skill.level }}</p>
+				<p class="small-muted">Mentor: {{ skill.mentor_name }}</p>
+				<p class="small-muted">Rating: {{ skill.mentor_rating }} / 5 ({{ skill.review_count }} reviews)</p>
+
+				{% if current_user and current_user.id != skill.user_id %}
+				<form class="stack-form" method="post" action="{{ url_for('schedule_session') }}">
+					<input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+					<input type="hidden" name="mentor_id" value="{{ skill.user_id }}">
+					<input type="hidden" name="skill_name" value="{{ skill.name }}">
+					<div class="form-group compact">
+						<label for="when-{{ skill.id }}">Schedule</label>
+						<input id="when-{{ skill.id }}" name="scheduled_for" type="datetime-local" required>
+					</div>
+					<div class="form-group compact">
+						<label for="note-{{ skill.id }}">Session Notes</label>
+						<textarea id="note-{{ skill.id }}" name="notes" rows="2" placeholder="What do you want to learn?"></textarea>
+					</div>
+					<div class="form-group compact">
+						<label for="platform-{{ skill.id }}">Video Platform</label>
+						<select id="platform-{{ skill.id }}" name="video_platform" required>
+							{% for platform in video_platforms %}
+							<option value="{{ platform }}">{{ platform }}</option>
+							{% endfor %}
+						</select>
+					</div>
+					<div class="form-group compact">
+						<label for="meeting-link-{{ skill.id }}">Meeting Link</label>
+						<input id="meeting-link-{{ skill.id }}" name="meeting_link" type="url" placeholder="https://meet.google.com/..." required>
+					</div>
+					<button class="btn btn-small btn-primary" type="submit">Book Session</button>
+				</form>
+				{% elif not current_user %}
+				<a class="btn btn-small btn-outline" href="{{ url_for('login', next=url_for('skills')) }}">Login to Book</a>
+				{% else %}
+				<p class="small-muted">This is your own listing.</p>
+				{% endif %}
+			</article>
+			{% else %}
+			<article class="panel">
+				<h3>No skills found</h3>
+				<p>Try adjusting your filters or add your own skills from your profile page.</p>
+			</article>
+			{% endfor %}
+		</div>
+	</div>
+</section>
+{% endblock %}

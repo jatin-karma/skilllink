@@ -1,0 +1,445 @@
+{% extends "base.html" %}
+
+{% block title %}Edit Profile{% endblock %}
+
+{% block content %}
+<section class="section section-tight">
+	<div class="container">
+		<div class="section-title left">
+			<p>Profile Settings</p>
+			<h2>Edit Profile</h2>
+		</div>
+
+		<article class="panel panel-accent">
+			<div class="profile-control-row">
+				<a class="btn btn-outline btn-small" href="{{ url_for('profile_by_id', user_id=user.id) }}">← Back to Profile</a>
+				<a class="btn btn-outline btn-small" href="{{ url_for('edit_profile', user_id=user.id) }}">Refresh Settings Page</a>
+			</div>
+
+			<h3>Basic Details</h3>
+			<form method="post" action="{{ url_for('update_profile_basic') }}" class="stack-form">
+				<input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+				<div class="grid-2">
+					<div class="form-group">
+						<label for="basicName">Name</label>
+						<input id="basicName" name="name" type="text" maxlength="80" value="{{ user.name }}" required>
+					</div>
+					<div class="form-group">
+						<label for="basicEmail">Email</label>
+						<input id="basicEmail" type="email" value="{{ user.email }}" readonly>
+					</div>
+				</div>
+				<div class="form-group">
+					<label for="basicBio">Bio</label>
+					<textarea id="basicBio" name="bio" rows="4" maxlength="1200" placeholder="Tell people about yourself...">{{ user.bio or '' }}</textarea>
+				</div>
+				<button class="btn btn-primary btn-small" type="submit">Save Basic Details</button>
+			</form>
+		</article>
+	</div>
+</section>
+
+<section class="section section-tight">
+	<div class="container grid-2">
+		<article class="panel">
+			<h3>Profile Picture</h3>
+			<form method="post" action="{{ url_for('update_profile_picture') }}" enctype="multipart/form-data" class="stack-form profile-picture-form">
+				<input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+				<div class="form-group">
+					<label for="profile_picture">{{ 'Change Profile Picture' if user.profile_image else 'Upload Profile Picture' }}</label>
+					<input id="profile_picture" name="profile_picture" type="file" accept=".jpg,.jpeg,.png,.gif,.webp" required>
+					<p class="small-muted">Allowed: JPG, PNG, GIF, WEBP. Max size: 4MB.</p>
+				</div>
+				<button class="btn btn-primary btn-small" type="submit">{{ 'Change Picture' if user.profile_image else 'Upload Picture' }}</button>
+			</form>
+
+			{% if user.profile_image %}
+			<form method="post" action="{{ url_for('remove_profile_picture') }}" class="inline-remove-form">
+				<input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+				<button class="btn btn-outline btn-small" type="submit">Remove Picture</button>
+			</form>
+			{% endif %}
+		</article>
+
+		<article class="panel panel-accent">
+			<h3>Profile Dashboard Details</h3>
+			<form id="dashboardEditForm" class="stack-form">
+				<div class="grid-2">
+					<div class="form-group">
+						<label for="dashKicker">Profile Label</label>
+						<input id="dashKicker" type="text" maxlength="40" placeholder="Student Profile">
+					</div>
+					<div class="form-group">
+						<label for="dashHeadline">Headline</label>
+						<input id="dashHeadline" type="text" maxlength="120" placeholder="Student at SkillLink">
+					</div>
+				</div>
+
+				<div class="form-group">
+					<label for="dashAbout">About</label>
+					<textarea id="dashAbout" rows="4" maxlength="1200" placeholder="Share your interests and goals..."></textarea>
+				</div>
+
+				<div class="grid-2">
+					<div class="form-group">
+						<label for="dashLinkedin">LinkedIn URL</label>
+						<input id="dashLinkedin" type="url" maxlength="300" placeholder="https://linkedin.com/in/username">
+					</div>
+					<div class="form-group">
+						<label for="dashGithub">GitHub URL</label>
+						<input id="dashGithub" type="url" maxlength="300" placeholder="https://github.com/username">
+					</div>
+				</div>
+
+				<div class="form-group">
+					<label for="dashPortfolio">Portfolio URL (Optional)</label>
+					<input id="dashPortfolio" type="url" maxlength="300" placeholder="https://your-portfolio.com">
+				</div>
+
+				<div class="grid-2">
+					<div class="form-group">
+						<label for="dashEduCollege">College / University</label>
+						<input id="dashEduCollege" type="text" maxlength="140" placeholder="N/A">
+					</div>
+					<div class="form-group">
+						<label for="dashEduDepartment">Department</label>
+						<input id="dashEduDepartment" type="text" maxlength="140" placeholder="N/A">
+					</div>
+				</div>
+
+				<div class="grid-2">
+					<div class="form-group">
+						<label for="dashEduGraduationYear">Graduation Year</label>
+						<input id="dashEduGraduationYear" type="text" maxlength="10" placeholder="----">
+					</div>
+					<div class="form-group">
+						<label for="dashEduCgpa">Current CGPA</label>
+						<input id="dashEduCgpa" type="text" maxlength="10" placeholder="--">
+					</div>
+				</div>
+
+				<div class="form-group">
+					<label for="dashEduEnrollment">Enrollment No</label>
+					<input id="dashEduEnrollment" type="text" maxlength="32" placeholder="---">
+				</div>
+
+				<div class="form-group">
+					<label for="dashBannerUpload">Student Profile Banner (Optional)</label>
+					<input id="dashBannerUpload" type="file" accept="image/*">
+					<p id="dashBannerInfo" class="small-muted">Allowed: JPG, PNG, GIF, WEBP. Max size: 4MB.</p>
+					<p class="small-muted">This banner is applied to the top student details card (name, stats, and headline) on your profile page.</p>
+				</div>
+
+				<div class="profile-modal-actions">
+					<button class="btn btn-outline btn-small" id="btnRemoveBanner" type="button">Remove Banner</button>
+					<button class="btn btn-primary btn-small" type="submit">Save Dashboard Details</button>
+				</div>
+			</form>
+			<p id="dashboardSaveStatus" class="small-muted"></p>
+		</article>
+	</div>
+</section>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(() => {
+	const initialDashboardState = {{ dashboard_state | tojson }};
+	const csrfToken = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '';
+	const statusEl = document.getElementById('dashboardSaveStatus');
+
+	const form = document.getElementById('dashboardEditForm');
+	if (!form) {
+		return;
+	}
+
+	const fields = {
+		kicker: document.getElementById('dashKicker'),
+		headline: document.getElementById('dashHeadline'),
+		about: document.getElementById('dashAbout'),
+		linkedin: document.getElementById('dashLinkedin'),
+		github: document.getElementById('dashGithub'),
+		portfolio: document.getElementById('dashPortfolio'),
+		eduCollege: document.getElementById('dashEduCollege'),
+		eduDepartment: document.getElementById('dashEduDepartment'),
+		eduGraduationYear: document.getElementById('dashEduGraduationYear'),
+		eduCgpa: document.getElementById('dashEduCgpa'),
+		eduEnrollment: document.getElementById('dashEduEnrollment'),
+		bannerUpload: document.getElementById('dashBannerUpload'),
+		bannerInfo: document.getElementById('dashBannerInfo'),
+		removeBannerBtn: document.getElementById('btnRemoveBanner'),
+	};
+
+	const defaultState = {
+		kicker: 'Student Profile',
+		headline: '',
+		about: '',
+		bannerImageDataUrl: '',
+		social: {
+			linkedin: '',
+			github: '',
+			portfolio: '',
+		},
+		education: {
+			college: 'N/A',
+			department: 'N/A',
+			graduationYear: '----',
+			cgpa: '--',
+			enrollment: '---',
+		},
+		resume: {
+			name: '',
+			dataUrl: '',
+		},
+		certificates: [],
+		projects: [],
+		posts: [],
+	};
+
+	const normalizeString = (value, fallback = '') => {
+		if (typeof value !== 'string') {
+			return fallback;
+		}
+		const trimmed = value.trim();
+		return trimmed || fallback;
+	};
+
+	const ensureArray = (value) => (Array.isArray(value) ? value : []);
+
+	const sanitizeExternalUrl = (rawValue) => {
+		const value = normalizeString(rawValue);
+		if (!value) {
+			return '';
+		}
+		const candidate = /^https?:\/\//i.test(value) ? value : `https://${value}`;
+		try {
+			const parsed = new URL(candidate);
+			if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+				return '';
+			}
+			return parsed.toString();
+		} catch (_error) {
+			return '';
+		}
+	};
+
+	const sanitizeImageDataUrl = (rawValue) => {
+		const value = normalizeString(rawValue);
+		if (!value) {
+			return '';
+		}
+
+		const lowerValue = value.toLowerCase();
+		const allowedPrefixes = [
+			'data:image/jpeg;base64,',
+			'data:image/jpg;base64,',
+			'data:image/png;base64,',
+			'data:image/gif;base64,',
+			'data:image/webp;base64,',
+		];
+
+		if (!allowedPrefixes.some((prefix) => lowerValue.startsWith(prefix))) {
+			return '';
+		}
+
+		if (!value.includes(',')) {
+			return '';
+		}
+
+		return value;
+	};
+
+	const readFileAsDataUrl = (file) =>
+		new Promise((resolve, reject) => {
+			const reader = new FileReader();
+			reader.onload = () => resolve(String(reader.result || ''));
+			reader.onerror = () => reject(new Error('Could not read file.'));
+			reader.readAsDataURL(file);
+		});
+
+	const loadImageElement = (dataUrl) =>
+		new Promise((resolve, reject) => {
+			const image = new Image();
+			image.onload = () => resolve(image);
+			image.onerror = () => reject(new Error('Could not process image.'));
+			image.src = dataUrl;
+		});
+
+	const buildBannerDataUrl = async (file) => {
+		const originalDataUrl = await readFileAsDataUrl(file);
+		const image = await loadImageElement(originalDataUrl);
+
+		const maxWidth = 1600;
+		const maxHeight = 720;
+		const scale = Math.min(1, maxWidth / image.width, maxHeight / image.height);
+		const width = Math.max(1, Math.round(image.width * scale));
+		const height = Math.max(1, Math.round(image.height * scale));
+
+		const canvas = document.createElement('canvas');
+		canvas.width = width;
+		canvas.height = height;
+		const context = canvas.getContext('2d');
+		if (!context) {
+			throw new Error('Could not process image.');
+		}
+
+		context.drawImage(image, 0, 0, width, height);
+
+		const qualitySteps = [0.88, 0.8, 0.72, 0.64, 0.56];
+		let resultDataUrl = canvas.toDataURL('image/webp', qualitySteps[0]);
+		for (const quality of qualitySteps) {
+			resultDataUrl = canvas.toDataURL('image/webp', quality);
+			if (resultDataUrl.length <= 2_000_000) {
+				break;
+			}
+		}
+
+		return resultDataUrl;
+	};
+
+	const normalizeState = (rawState) => {
+		const parsed = rawState && typeof rawState === 'object' ? rawState : {};
+		return {
+			kicker: normalizeString(parsed.kicker, defaultState.kicker),
+			headline: normalizeString(parsed.headline, defaultState.headline),
+			about: normalizeString(parsed.about, defaultState.about),
+			bannerImageDataUrl: sanitizeImageDataUrl(parsed.bannerImageDataUrl),
+			social: {
+				linkedin: sanitizeExternalUrl(parsed.social?.linkedin || ''),
+				github: sanitizeExternalUrl(parsed.social?.github || ''),
+				portfolio: sanitizeExternalUrl(parsed.social?.portfolio || ''),
+			},
+			education: {
+				college: normalizeString(parsed.education?.college, defaultState.education.college),
+				department: normalizeString(parsed.education?.department, defaultState.education.department),
+				graduationYear: normalizeString(parsed.education?.graduationYear, defaultState.education.graduationYear),
+				cgpa: normalizeString(parsed.education?.cgpa, defaultState.education.cgpa),
+				enrollment: normalizeString(parsed.education?.enrollment, defaultState.education.enrollment),
+			},
+			resume: {
+				name: normalizeString(parsed.resume?.name),
+				dataUrl: normalizeString(parsed.resume?.dataUrl),
+			},
+			certificates: ensureArray(parsed.certificates),
+			projects: ensureArray(parsed.projects),
+			posts: ensureArray(parsed.posts),
+		};
+	};
+
+	const setStatus = (message, isError = false) => {
+		if (!statusEl) {
+			return;
+		}
+		statusEl.textContent = message;
+		statusEl.className = isError ? 'flash flash-danger' : 'small-muted';
+	};
+
+	let state = normalizeState(initialDashboardState);
+
+	const syncForm = () => {
+		fields.kicker.value = state.kicker || 'Student Profile';
+		fields.headline.value = state.headline || '';
+		fields.about.value = state.about || '';
+		fields.linkedin.value = state.social.linkedin || '';
+		fields.github.value = state.social.github || '';
+		fields.portfolio.value = state.social.portfolio || '';
+		fields.eduCollege.value = state.education.college || 'N/A';
+		fields.eduDepartment.value = state.education.department || 'N/A';
+		fields.eduGraduationYear.value = state.education.graduationYear || '----';
+		fields.eduCgpa.value = state.education.cgpa || '--';
+		fields.eduEnrollment.value = state.education.enrollment || '---';
+		fields.bannerUpload.value = '';
+		fields.bannerInfo.textContent = state.bannerImageDataUrl
+			? 'Banner image is currently set.'
+			: 'Allowed: JPG, PNG, GIF, WEBP. Max size: 4MB.';
+	};
+
+	fields.bannerUpload.addEventListener('change', (event) => {
+		const selectedFile = event.target.files?.[0] || null;
+		fields.bannerInfo.textContent = selectedFile
+			? `${selectedFile.name} selected`
+			: (state.bannerImageDataUrl
+				? 'Banner image is currently set.'
+				: 'Allowed: JPG, PNG, GIF, WEBP. Max size: 4MB.');
+	});
+
+	fields.removeBannerBtn.addEventListener('click', () => {
+		state.bannerImageDataUrl = '';
+		syncForm();
+		setStatus('Banner removed locally. Click Save Dashboard Details to persist.');
+	});
+
+	form.addEventListener('submit', async (event) => {
+		event.preventDefault();
+		setStatus('Saving...');
+
+		let bannerImageDataUrl = state.bannerImageDataUrl;
+		const selectedBanner = fields.bannerUpload.files?.[0] || null;
+
+		if (selectedBanner) {
+			if (!selectedBanner.type.startsWith('image/')) {
+				setStatus('Banner must be an image file.', true);
+				return;
+			}
+
+			if (selectedBanner.size > 8 * 1024 * 1024) {
+				setStatus('Banner image is too large (max 8MB).', true);
+				return;
+			}
+
+			try {
+				bannerImageDataUrl = await buildBannerDataUrl(selectedBanner);
+			} catch (_error) {
+				setStatus('Could not read banner image.', true);
+				return;
+			}
+
+			if (bannerImageDataUrl.length > 2_100_000) {
+				setStatus('Banner is still too large. Try a smaller image.', true);
+				return;
+			}
+		}
+
+		state.kicker = normalizeString(fields.kicker.value, 'Student Profile').slice(0, 40);
+		state.headline = normalizeString(fields.headline.value, 'Student at SkillLink').slice(0, 120);
+		state.about = normalizeString(fields.about.value).slice(0, 1200);
+		state.social.linkedin = sanitizeExternalUrl(fields.linkedin.value);
+		state.social.github = sanitizeExternalUrl(fields.github.value);
+		state.social.portfolio = sanitizeExternalUrl(fields.portfolio.value);
+		state.education = {
+			college: normalizeString(fields.eduCollege.value, 'N/A').slice(0, 140),
+			department: normalizeString(fields.eduDepartment.value, 'N/A').slice(0, 140),
+			graduationYear: normalizeString(fields.eduGraduationYear.value, '----').slice(0, 10),
+			cgpa: normalizeString(fields.eduCgpa.value, '--').slice(0, 10),
+			enrollment: normalizeString(fields.eduEnrollment.value, '---').slice(0, 32),
+		};
+		state.bannerImageDataUrl = sanitizeImageDataUrl(bannerImageDataUrl);
+
+		try {
+			const response = await fetch('{{ url_for("save_profile_dashboard_state") }}', {
+				method: 'POST',
+				headers: {
+					'Content-Type': 'application/json',
+					'X-CSRF-Token': csrfToken,
+				},
+				body: JSON.stringify({ state }),
+			});
+
+			const result = await response.json().catch(() => ({}));
+			if (!response.ok || !result.ok) {
+				setStatus(result.message || 'Could not save profile details.', true);
+				return;
+			}
+
+			state = normalizeState(result.state || state);
+			syncForm();
+			setStatus('Profile dashboard details saved successfully.');
+		} catch (_error) {
+			setStatus('Could not save profile details.', true);
+		}
+	});
+
+	syncForm();
+})();
+</script>
+{% endblock %}

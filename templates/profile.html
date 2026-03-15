@@ -1,0 +1,1634 @@
+{% extends "base.html" %}
+
+{% block title %}Student Profile{% endblock %}
+
+{% block content %}
+<section
+	id="profileHeroSection"
+	class="hero hero-small hero-image-section hero-image-profile"
+	{% if dashboard_state and dashboard_state.bannerImageDataUrl %}
+	style='--hero-image: url({{ dashboard_state.bannerImageDataUrl | tojson }});'
+	{% endif %}
+>
+	<div
+		class="hero-content profile-hero-dashboard"
+		{% if dashboard_state and dashboard_state.bannerImageDataUrl %}
+		style='--profile-card-image: url({{ dashboard_state.bannerImageDataUrl | tojson }});'
+		{% endif %}
+	>
+		<div class="profile-level-badge" id="levelBadge">Lvl 1</div>
+		<div class="profile-hero-layout">
+			<div class="profile-avatar-wrap">
+				{% if user.profile_image and current_user %}
+				<img
+					class="profile-avatar"
+					src="{{ get_profile_image_url(user.profile_image) }}"
+					alt="{{ user.name }} profile picture"
+				>
+				{% else %}
+				<div class="profile-avatar-fallback">{{ user.name[:1] | upper }}</div>
+				{% endif %}
+			</div>
+			<div class="profile-hero-main">
+				<p class="hero-kicker" id="heroKicker">Student Profile</p>
+				<h1 id="heroName">{{ user.name }}</h1>
+				<p id="heroHeadline">{{ user.bio or "Student at SkillLink" }}</p>
+				<div class="profile-social-links" id="socialLinks">
+					<a href="#" target="_blank" rel="noopener noreferrer" id="linkLinkedin" style="display:none;">LinkedIn</a>
+					<a href="#" target="_blank" rel="noopener noreferrer" id="linkGithub" style="display:none;">GitHub</a>
+					<a href="#" target="_blank" rel="noopener noreferrer" id="linkPortfolio" style="display:none;">Portfolio</a>
+				</div>
+			</div>
+		</div>
+
+		<div class="profile-hero-bottom">
+			<div class="profile-hero-stats">
+				<div class="profile-stat-item"><span id="heroSkillsTeach">{{ teach_skills | length }}</span>Mentoring</div>
+				<div class="profile-stat-item"><span id="heroSkillsLearn">{{ learn_skills | length }}</span>Learning</div>
+				<div class="profile-stat-item"><span id="heroSessions">{{ my_sessions | length if is_owner else 0 }}</span>Sessions</div>
+				<div class="profile-stat-item"><span id="heroReviews">{{ rating_summary.total_reviews }}</span>Reviews</div>
+			</div>
+
+			<div class="profile-xp-wrap">
+				<p class="profile-xp-label">
+					<strong>Experience (<span id="xpProgress">0</span>)</strong>
+					<span><span id="xpTarget">100</span> XP to next level</span>
+				</p>
+				<div class="profile-xp-track">
+					<div id="xpBar" class="profile-xp-fill" style="width:0%;"></div>
+				</div>
+			</div>
+
+			{% if is_owner %}
+			<div class="profile-control-row">
+				<a href="#" id="linkResume" class="btn btn-outline btn-small" target="_blank" rel="noopener noreferrer" style="display:none;">View Resume</a>
+				<label id="btnUploadResume" class="btn btn-outline btn-small profile-label-button">
+					Upload Resume
+					<input type="file" id="resumeUploadInput" accept="application/pdf" hidden>
+				</label>
+				<form method="get" action="{{ url_for('edit_profile', user_id=user.id) }}" class="inline-remove-form">
+					<button class="btn btn-primary btn-small" type="submit">Edit Profile</button>
+				</form>
+			</div>
+			{% endif %}
+		</div>
+	</div>
+</section>
+
+<section class="section section-tight">
+	<div class="container profile-grid">
+		<article class="panel">
+			<h3>Profile Summary</h3>
+			<p><strong>Email:</strong> {{ user.email }}</p>
+			<p><strong>Average Rating:</strong> {{ rating_summary.average_rating }} / 5</p>
+			<p><strong>Total Reviews:</strong> {{ rating_summary.total_reviews }}</p>
+			<p><strong>Member Since:</strong> {{ user.created_at[:10] }}</p>
+
+			{% if is_owner %}
+			{% endif %}
+
+			{% if current_user and not is_owner %}
+			<a class="btn btn-primary" href="{{ url_for('skills', q=user.name) }}">Find {{ user.name }} Skills</a>
+			{% endif %}
+		</article>
+
+		<article class="panel panel-accent">
+			<h3>Skill Listings</h3>
+			<div class="skill-columns">
+				<div>
+					<h4>Can Teach</h4>
+					<div class="badge-wrap">
+						{% for skill in teach_skills %}
+						<span class="badge">{{ skill.name }} ({{ skill.level }})</span>
+						{% else %}
+						<p class="small-muted">No teaching skills added.</p>
+						{% endfor %}
+					</div>
+				</div>
+				<div>
+					<h4>Wants to Learn</h4>
+					<div class="badge-wrap">
+						{% for skill in learn_skills %}
+						<span class="badge badge-soft">{{ skill.name }} ({{ skill.level }})</span>
+						{% else %}
+						<p class="small-muted">No learning goals added.</p>
+						{% endfor %}
+					</div>
+				</div>
+			</div>
+		</article>
+	</div>
+</section>
+
+{% if is_owner %}
+<section id="editProfileSection" class="section section-tight" hidden>
+	<div class="container">
+		<article class="panel panel-accent">
+			<h3>Edit Profile</h3>
+			<form id="editProfileForm" class="stack-form">
+				<div class="grid-2">
+					<div class="form-group">
+						<label for="editKicker">Profile Label</label>
+						<input id="editKicker" type="text" maxlength="40" placeholder="Student Profile">
+					</div>
+					<div class="form-group">
+						<label for="editHeadline">Headline</label>
+						<input id="editHeadline" type="text" maxlength="120" placeholder="Student at SkillLink">
+					</div>
+				</div>
+
+				<div class="form-group">
+					<label for="editAbout">About Me</label>
+					<textarea id="editAbout" rows="4" maxlength="1200" placeholder="Write about yourself..."></textarea>
+				</div>
+
+				<div class="grid-2">
+					<div class="form-group">
+						<label for="editEduCollege">College / University</label>
+						<input id="editEduCollege" type="text" maxlength="140" placeholder="N/A">
+					</div>
+					<div class="form-group">
+						<label for="editEduDepartment">Department</label>
+						<input id="editEduDepartment" type="text" maxlength="140" placeholder="N/A">
+					</div>
+				</div>
+
+				<div class="grid-2">
+					<div class="form-group">
+						<label for="editEduGraduationYear">Graduation Year</label>
+						<input id="editEduGraduationYear" type="text" maxlength="10" placeholder="----">
+					</div>
+					<div class="form-group">
+						<label for="editEduCgpa">Current CGPA</label>
+						<input id="editEduCgpa" type="text" maxlength="10" placeholder="--">
+					</div>
+				</div>
+
+				<div class="form-group">
+					<label for="editEduEnrollment">Enrollment No</label>
+					<input id="editEduEnrollment" type="text" maxlength="32" placeholder="---">
+				</div>
+
+				<div class="grid-2">
+					<div class="form-group">
+						<label for="editLinkedin">LinkedIn URL</label>
+						<input id="editLinkedin" type="url" maxlength="300" placeholder="https://linkedin.com/in/username">
+					</div>
+					<div class="form-group">
+						<label for="editGithub">GitHub URL</label>
+						<input id="editGithub" type="url" maxlength="300" placeholder="https://github.com/username">
+					</div>
+				</div>
+
+				<div class="grid-2">
+					<div class="form-group">
+						<label for="editPortfolio">Portfolio URL (Optional)</label>
+						<input id="editPortfolio" type="url" maxlength="300" placeholder="https://your-portfolio.com">
+					</div>
+					<div class="form-group">
+						<label for="bannerUploadInput">Student Profile Banner (Optional)</label>
+						<input id="bannerUploadInput" type="file" accept="image/*">
+						<p id="bannerUploadInfo" class="small-muted">Allowed: JPG, PNG, GIF, WEBP. Max size: 4MB.</p>
+					</div>
+				</div>
+
+				<div class="profile-modal-actions">
+					<button class="btn btn-outline btn-small" id="btnRemoveBanner" type="button">Remove Banner</button>
+					<button class="btn btn-primary btn-small" type="submit">Save Profile</button>
+				</div>
+			</form>
+
+			<h4>Profile Picture</h4>
+			<form method="post" action="{{ url_for('update_profile_picture') }}" enctype="multipart/form-data" class="stack-form profile-picture-form">
+				<input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+				<div class="form-group">
+					<label for="profile_picture">{{ 'Change Profile Picture' if user.profile_image else 'Upload Profile Picture' }}</label>
+					<input id="profile_picture" name="profile_picture" type="file" accept=".jpg,.jpeg,.png,.gif,.webp" required>
+					<p class="small-muted">Allowed: JPG, PNG, GIF, WEBP. Max size: 4MB.</p>
+				</div>
+				<button class="btn btn-primary btn-small" type="submit">{{ 'Change Picture' if user.profile_image else 'Upload Picture' }}</button>
+			</form>
+
+			{% if user.profile_image %}
+			<form method="post" action="{{ url_for('remove_profile_picture') }}" class="inline-remove-form">
+				<input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+				<button class="btn btn-outline btn-small" type="submit">Remove Picture</button>
+			</form>
+			{% endif %}
+		</article>
+	</div>
+</section>
+{% endif %}
+
+<section class="section section-tight">
+	<div class="container grid-2">
+		<article class="panel">
+			<h3>About Me</h3>
+			<p id="aboutText" class="profile-about-text">{{ user.bio or "No bio provided." }}</p>
+		</article>
+
+		<article class="panel panel-accent">
+			<div class="profile-panel-header">
+				<h3>Education</h3>
+				{% if is_owner %}
+				<button class="btn btn-outline btn-small" id="editEducationBtn" type="button">Edit Education</button>
+				{% endif %}
+			</div>
+			<div class="profile-education-grid">
+				<div class="profile-education-item">
+					<p class="small-muted">College / University</p>
+					<p class="profile-education-value" id="eduCollege">N/A</p>
+				</div>
+				<div class="profile-education-item">
+					<p class="small-muted">Department</p>
+					<p class="profile-education-value" id="eduDept">N/A</p>
+				</div>
+				<div class="profile-education-item">
+					<p class="small-muted">Graduation Year</p>
+					<p class="profile-education-value" id="eduYear">----</p>
+				</div>
+				<div class="profile-education-item">
+					<p class="small-muted">Current CGPA</p>
+					<p class="profile-education-value" id="eduCgpa">--</p>
+				</div>
+				<div class="profile-education-item">
+					<p class="small-muted">Enrollment No</p>
+					<p class="profile-education-value" id="eduEnrollment">---</p>
+				</div>
+			</div>
+		</article>
+	</div>
+</section>
+
+<section class="section section-tight">
+	<div class="container grid-2">
+		<article class="panel">
+			<div class="profile-panel-header">
+				<h3>Certificates</h3>
+				{% if is_owner %}
+				<label for="certUpload" class="btn btn-primary btn-small profile-label-button">
+					+ Upload Certificate
+					<input type="file" id="certUpload" accept="image/*,application/pdf" hidden>
+				</label>
+				{% endif %}
+			</div>
+			<div id="certificatesContainer" class="profile-card-list"></div>
+		</article>
+
+		<article class="panel">
+			<div class="profile-panel-header">
+				<h3>Experience & Projects</h3>
+				{% if is_owner %}
+				<a class="btn btn-outline btn-small" href="{{ url_for('edit_profile', user_id=user.id) }}">Manage Projects</a>
+				{% endif %}
+			</div>
+			<div id="projectsContainer" class="profile-card-list"></div>
+		</article>
+	</div>
+</section>
+
+{% if is_owner %}
+<section class="section section-tight">
+	<div class="container">
+		<article class="panel">
+			<h3>Create Post</h3>
+			<textarea
+				id="postContent"
+				class="profile-post-input"
+				rows="4"
+				maxlength="2000"
+				placeholder="Share your learning milestones, project updates, or notes..."
+			></textarea>
+			<div class="profile-post-actions">
+				<label class="btn btn-outline btn-small profile-label-button" for="postAttach">
+					Attach Media / PDF
+					<input type="file" id="postAttach" accept="image/*,video/*,application/pdf" hidden>
+				</label>
+				<p id="postAttachInfo" class="small-muted profile-attach-info"></p>
+				<button class="btn btn-primary btn-small" id="btnCreatePost" type="button">Publish</button>
+			</div>
+		</article>
+	</div>
+</section>
+{% endif %}
+
+<section class="section section-tight">
+	<div class="container">
+		<article class="panel panel-accent">
+			<div class="section-title left profile-activity-title">
+				<p>Community Presence</p>
+				<h2>Activity Feed</h2>
+			</div>
+			<div id="postsContainer" class="profile-post-list"></div>
+		</article>
+	</div>
+</section>
+
+{% if is_owner %}
+<section class="section section-alt">
+	<div class="container grid-2">
+		<article class="panel">
+			<h3>Add Teaching Skill</h3>
+			<form method="post" action="{{ url_for('add_skill') }}" class="stack-form">
+				<input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+				<input type="hidden" name="skill_type" value="teach">
+				<div class="form-group">
+					<label for="teach_name">Skill Name</label>
+					<input id="teach_name" name="name" type="text" placeholder="Python" required>
+				</div>
+				<div class="form-group">
+					<label for="teach_category">Category</label>
+					<input id="teach_category" name="category" type="text" placeholder="Programming" required>
+				</div>
+				<div class="form-group">
+					<label for="teach_level">Level</label>
+					<select id="teach_level" name="level" required>
+						{% for item in skill_levels %}
+						<option value="{{ item }}">{{ item }}</option>
+						{% endfor %}
+					</select>
+				</div>
+				<button class="btn btn-primary" type="submit">Add Teaching Skill</button>
+			</form>
+		</article>
+
+		<article class="panel">
+			<h3>Add Learning Goal</h3>
+			<form method="post" action="{{ url_for('add_skill') }}" class="stack-form">
+				<input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+				<input type="hidden" name="skill_type" value="learn">
+				<div class="form-group">
+					<label for="learn_name">Skill Name</label>
+					<input id="learn_name" name="name" type="text" placeholder="Graphic Design" required>
+				</div>
+				<div class="form-group">
+					<label for="learn_category">Category</label>
+					<input id="learn_category" name="category" type="text" placeholder="Design" required>
+				</div>
+				<div class="form-group">
+					<label for="learn_level">Level</label>
+					<select id="learn_level" name="level" required>
+						{% for item in skill_levels %}
+						<option value="{{ item }}">{{ item }}</option>
+						{% endfor %}
+					</select>
+				</div>
+				<button class="btn btn-primary" type="submit">Add Learning Goal</button>
+			</form>
+		</article>
+	</div>
+</section>
+
+<section class="section">
+	<div class="container">
+		<div class="section-title left">
+			<p>Online Learning Sessions</p>
+			<h2>My Sessions</h2>
+		</div>
+		<div class="table-wrap panel">
+			<table class="session-table">
+				<thead>
+					<tr>
+						<th>Skill</th>
+						<th>When</th>
+						<th>Appointment</th>
+						<th>As</th>
+						<th>With</th>
+						<th>Status</th>
+						<th>Actions</th>
+					</tr>
+				</thead>
+				<tbody>
+					{% for item in my_sessions %}
+					<tr>
+						<td>{{ item.skill_name }}</td>
+						<td>{{ item.scheduled_for }}</td>
+						<td>
+							<p class="small-muted"><strong>{{ item.video_platform }}</strong></p>
+							{% if item.meeting_link %}
+							<div class="appointment-links">
+								<a class="small-link" href="{{ item.meeting_link }}" target="_blank" rel="noopener noreferrer">Join Link</a>
+								<button
+									type="button"
+									class="btn btn-small btn-outline copy-link-btn"
+									data-link="{{ item.meeting_link }}"
+								>
+									Copy Link
+								</button>
+							</div>
+							{% else %}
+							<span class="small-muted">No link yet</span>
+							{% endif %}
+						</td>
+						<td>{% if item.mentor_id == current_user.id %}Mentor{% else %}Learner{% endif %}</td>
+						<td>{% if item.mentor_id == current_user.id %}{{ item.learner_name }}{% else %}{{ item.mentor_name }}{% endif %}</td>
+						<td><span class="status status-{{ item.status }}">{{ item.status }}</span></td>
+						<td>
+							<div class="table-actions">
+								<a class="btn btn-small btn-outline talk-link" href="{{ url_for('session_detail', session_id=item.id) }}">
+									<span>Talk ({{ item.message_count }})</span>
+									{% if item.unread_message_count > 0 %}
+									<span class="unread-badge">{{ item.unread_message_count }} unread</span>
+									{% endif %}
+								</a>
+								{% if item.status == 'scheduled' %}
+								{% if item.mentor_id == current_user.id %}
+								<form method="post" action="{{ url_for('update_session_status', session_id=item.id) }}">
+									<input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+									<input type="hidden" name="status" value="completed">
+									<button class="btn btn-small btn-primary" type="submit">Complete</button>
+								</form>
+								{% endif %}
+								<form method="post" action="{{ url_for('update_session_status', session_id=item.id) }}">
+									<input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+									<input type="hidden" name="status" value="cancelled">
+									<button class="btn btn-small btn-outline" type="submit">Cancel</button>
+								</form>
+								{% endif %}
+
+								{% if item.status == 'completed' and not item.reviewed_by_me %}
+								<form method="post" action="{{ url_for('submit_review', session_id=item.id) }}" class="inline-review">
+									<input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+									<select name="rating" required>
+										<option value="">Rate</option>
+										<option value="5">5</option>
+										<option value="4">4</option>
+										<option value="3">3</option>
+										<option value="2">2</option>
+										<option value="1">1</option>
+									</select>
+									<input name="comment" type="text" placeholder="Feedback" required>
+									<button class="btn btn-small btn-primary" type="submit">Submit</button>
+								</form>
+								{% elif item.status == 'completed' %}
+								<span class="small-muted">Reviewed</span>
+								{% endif %}
+							</div>
+						</td>
+					</tr>
+					{% else %}
+					<tr>
+						<td colspan="7" class="empty-row">No sessions yet. Book from the skills page.</td>
+					</tr>
+					{% endfor %}
+				</tbody>
+			</table>
+		</div>
+	</div>
+</section>
+{% endif %}
+
+<section class="section">
+	<div class="container">
+		<div class="section-title left">
+			<p>Rating and Feedback</p>
+			<h2>Recent Reviews</h2>
+		</div>
+		<div class="grid-2">
+			{% for review in profile_reviews %}
+			<article class="testimonial">
+				<p class="quote">"{{ review.comment or 'No comment provided.' }}"</p>
+				<p class="meta">{{ review.rating }}/5 by {{ review.reviewer_name }} on {{ review.created_at[:10] }}</p>
+			</article>
+			{% else %}
+			<article class="panel">
+				<p>No reviews yet. Complete sessions to start collecting feedback.</p>
+			</article>
+			{% endfor %}
+		</div>
+	</div>
+</section>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+(() => {
+	if (!window.location.pathname.startsWith('/profile')) {
+		return;
+	}
+
+	const editProfileUrl = {{ url_for('edit_profile', user_id=user.id) | tojson }};
+
+	window.prompt = () => null;
+
+	document.addEventListener('click', (event) => {
+		const target = event.target instanceof Element ? event.target.closest('button, a') : null;
+		if (!target) {
+			return;
+		}
+
+		const label = (target.textContent || '').trim().toLowerCase();
+		if (label !== 'edit profile') {
+			return;
+		}
+
+		event.preventDefault();
+		event.stopImmediatePropagation();
+		window.location.assign(editProfileUrl);
+	}, true);
+
+	document.addEventListener('submit', (event) => {
+		const form = event.target;
+		if (!(form instanceof HTMLFormElement)) {
+			return;
+		}
+
+		const submitLabel = (form.querySelector('button[type="submit"]')?.textContent || '').trim().toLowerCase();
+		if (submitLabel !== 'edit profile') {
+			return;
+		}
+
+		event.preventDefault();
+		event.stopImmediatePropagation();
+		window.location.assign(editProfileUrl);
+	}, true);
+})();
+
+(() => {
+	const copyButtons = document.querySelectorAll('.copy-link-btn');
+	copyButtons.forEach((button) => {
+		button.addEventListener('click', async () => {
+			const meetingLink = button.getAttribute('data-link') || '';
+			if (!meetingLink) {
+				return;
+			}
+
+			const originalText = button.textContent.trim();
+			try {
+				await navigator.clipboard.writeText(meetingLink);
+				button.textContent = 'Copied';
+				button.classList.add('is-copied');
+			} catch (error) {
+				button.textContent = 'Copy failed';
+			}
+
+			window.setTimeout(() => {
+				button.textContent = originalText;
+				button.classList.remove('is-copied');
+			}, 1400);
+		});
+	});
+})();
+
+(() => {
+	const profileContext = {
+		userId: {{ user.id | tojson }},
+		userName: {{ user.name | tojson }},
+		bio: {{ (user.bio or "") | tojson }},
+		isOwner: {{ is_owner | tojson }},
+		teachCount: {{ teach_skills | length }},
+		learnCount: {{ learn_skills | length }},
+		sessionsCount: {{ my_sessions | length if is_owner else 0 }},
+		reviewCount: {{ rating_summary.total_reviews | int }},
+		profileImageUrl: {{ (get_profile_image_url(user.profile_image) if user.profile_image and current_user else "") | tojson }},
+		fallbackInitial: {{ (user.name[:1] | upper) | tojson }},
+	};
+	const initialDashboardState = {{ dashboard_state | tojson }};
+	const csrfToken = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '';
+
+	const defaultState = {
+		kicker: 'Student Profile',
+		headline: profileContext.bio || "Student at SkillLink",
+		about: profileContext.bio || "",
+		bannerImageDataUrl: '',
+		social: {
+			linkedin: "",
+			github: "",
+			portfolio: "",
+		},
+		education: {
+			college: "N/A",
+			department: "N/A",
+			graduationYear: "----",
+			cgpa: "--",
+			enrollment: "---",
+		},
+		resume: {
+			name: "",
+			dataUrl: "",
+		},
+		certificates: [],
+		projects: [],
+		posts: [],
+	};
+
+	const cloneDefaultState = () => JSON.parse(JSON.stringify(defaultState));
+
+	const inlineStatus = document.getElementById('profileInlineStatus');
+	const editProfileBtn = document.getElementById('editProfileBtn');
+	const editProfileSection = document.getElementById('editProfileSection');
+	const editProfileForm = document.getElementById('editProfileForm');
+	const editKickerInput = document.getElementById('editKicker');
+	const editHeadlineInput = document.getElementById('editHeadline');
+	const editAboutInput = document.getElementById('editAbout');
+	const editEduCollegeInput = document.getElementById('editEduCollege');
+	const editEduDepartmentInput = document.getElementById('editEduDepartment');
+	const editEduGraduationYearInput = document.getElementById('editEduGraduationYear');
+	const editEduCgpaInput = document.getElementById('editEduCgpa');
+	const editEduEnrollmentInput = document.getElementById('editEduEnrollment');
+	const editLinkedinInput = document.getElementById('editLinkedin');
+	const editGithubInput = document.getElementById('editGithub');
+	const editPortfolioInput = document.getElementById('editPortfolio');
+	const bannerUploadInput = document.getElementById('bannerUploadInput');
+	const bannerUploadInfo = document.getElementById('bannerUploadInfo');
+	const btnRemoveBanner = document.getElementById('btnRemoveBanner');
+	const editEducationBtn = document.getElementById('editEducationBtn');
+	let inlineStatusTimer = null;
+
+	const readFileAsDataUrl = (file) =>
+		new Promise((resolve, reject) => {
+			const reader = new FileReader();
+			reader.onload = () => resolve(String(reader.result || ''));
+			reader.onerror = () => reject(new Error('Could not read file.'));
+			reader.readAsDataURL(file);
+		});
+
+	const loadImageElement = (dataUrl) =>
+		new Promise((resolve, reject) => {
+			const image = new Image();
+			image.onload = () => resolve(image);
+			image.onerror = () => reject(new Error('Could not process image.'));
+			image.src = dataUrl;
+		});
+
+	const buildBannerDataUrl = async (file) => {
+		const originalDataUrl = await readFileAsDataUrl(file);
+		const image = await loadImageElement(originalDataUrl);
+
+		const maxWidth = 1600;
+		const maxHeight = 720;
+		const scale = Math.min(1, maxWidth / image.width, maxHeight / image.height);
+		const width = Math.max(1, Math.round(image.width * scale));
+		const height = Math.max(1, Math.round(image.height * scale));
+
+		const canvas = document.createElement('canvas');
+		canvas.width = width;
+		canvas.height = height;
+		const context = canvas.getContext('2d');
+		if (!context) {
+			throw new Error('Could not process image.');
+		}
+
+		context.drawImage(image, 0, 0, width, height);
+
+		const qualitySteps = [0.88, 0.8, 0.72, 0.64, 0.56];
+		let resultDataUrl = canvas.toDataURL('image/webp', qualitySteps[0]);
+		for (const quality of qualitySteps) {
+			resultDataUrl = canvas.toDataURL('image/webp', quality);
+			if (resultDataUrl.length <= 2_000_000) {
+				break;
+			}
+		}
+
+		return resultDataUrl;
+	};
+
+	const normalizeString = (value, fallback = '') => {
+		if (typeof value !== 'string') {
+			return fallback;
+		}
+		const cleaned = value.trim();
+		return cleaned || fallback;
+	};
+
+	const ensureArray = (value) => (Array.isArray(value) ? value : []);
+
+	const sanitizeExternalUrl = (rawValue) => {
+		const value = normalizeString(rawValue);
+		if (!value) {
+			return '';
+		}
+
+		const candidate = /^https?:\/\//i.test(value) ? value : `https://${value}`;
+		try {
+			const parsed = new URL(candidate);
+			if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+				return '';
+			}
+			return parsed.toString();
+		} catch (_error) {
+			return '';
+		}
+	};
+
+	const sanitizeImageDataUrl = (rawValue) => {
+		const value = normalizeString(rawValue);
+		if (!value) {
+			return '';
+		}
+
+		const lowerValue = value.toLowerCase();
+		const allowedPrefixes = [
+			'data:image/jpeg;base64,',
+			'data:image/jpg;base64,',
+			'data:image/png;base64,',
+			'data:image/gif;base64,',
+			'data:image/webp;base64,',
+		];
+
+		if (!allowedPrefixes.some((prefix) => lowerValue.startsWith(prefix))) {
+			return '';
+		}
+
+		if (!value.includes(',')) {
+			return '';
+		}
+
+		return value;
+	};
+
+	const showPopup = (message, tone = 'info') => {
+		if (!inlineStatus) {
+			return;
+		}
+
+		inlineStatus.textContent = message;
+		inlineStatus.classList.remove('status-info', 'status-success', 'status-warning', 'status-danger');
+		inlineStatus.classList.add(`status-${tone}`);
+
+		if (inlineStatusTimer) {
+			window.clearTimeout(inlineStatusTimer);
+		}
+
+		inlineStatusTimer = window.setTimeout(() => {
+			inlineStatus.textContent = '';
+			inlineStatus.classList.remove('status-info', 'status-success', 'status-warning', 'status-danger');
+		}, 3200);
+	};
+
+	const normalizeState = (rawState) => {
+		const parsed = rawState && typeof rawState === 'object' ? rawState : {};
+		return {
+			kicker: normalizeString(parsed.kicker, defaultState.kicker),
+			headline: normalizeString(parsed.headline, defaultState.headline),
+			about: normalizeString(parsed.about, defaultState.about),
+			bannerImageDataUrl: sanitizeImageDataUrl(parsed.bannerImageDataUrl),
+			social: {
+				linkedin: sanitizeExternalUrl(parsed.social?.linkedin || ''),
+				github: sanitizeExternalUrl(parsed.social?.github || ''),
+				portfolio: sanitizeExternalUrl(parsed.social?.portfolio || ''),
+			},
+			education: {
+				college: normalizeString(parsed.education?.college, defaultState.education.college),
+				department: normalizeString(parsed.education?.department, defaultState.education.department),
+				graduationYear: normalizeString(parsed.education?.graduationYear, defaultState.education.graduationYear),
+				cgpa: normalizeString(parsed.education?.cgpa, defaultState.education.cgpa),
+				enrollment: normalizeString(parsed.education?.enrollment, defaultState.education.enrollment),
+			},
+			resume: {
+				name: normalizeString(parsed.resume?.name),
+				dataUrl: normalizeString(parsed.resume?.dataUrl),
+			},
+			certificates: ensureArray(parsed.certificates),
+			projects: ensureArray(parsed.projects),
+			posts: ensureArray(parsed.posts),
+		};
+	};
+
+	const hasMeaningfulData = (rawState) => {
+		if (!rawState || typeof rawState !== 'object') {
+			return false;
+		}
+
+		const kicker = normalizeString(rawState.kicker);
+		if (kicker && kicker !== 'Student Profile') {
+			return true;
+		}
+
+		if (sanitizeImageDataUrl(rawState.bannerImageDataUrl)) {
+			return true;
+		}
+
+		if (normalizeString(rawState.headline) || normalizeString(rawState.about)) {
+			return true;
+		}
+
+		if (Array.isArray(rawState.certificates) && rawState.certificates.length) {
+			return true;
+		}
+		if (Array.isArray(rawState.projects) && rawState.projects.length) {
+			return true;
+		}
+		if (Array.isArray(rawState.posts) && rawState.posts.length) {
+			return true;
+		}
+
+		const social = rawState.social;
+		if (social && typeof social === 'object') {
+			if (normalizeString(social.linkedin) || normalizeString(social.github) || normalizeString(social.portfolio)) {
+				return true;
+			}
+		}
+
+		return false;
+	};
+
+	let state = normalizeState(initialDashboardState);
+
+	const legacyStorageKey = `skilllink_profile_dashboard_${profileContext.userId}`;
+	if (!hasMeaningfulData(initialDashboardState)) {
+		try {
+			const legacyRaw = window.localStorage.getItem(legacyStorageKey);
+			if (legacyRaw) {
+				state = normalizeState(JSON.parse(legacyRaw));
+			}
+		} catch (_error) {
+			state = cloneDefaultState();
+		}
+	}
+
+	let saveTimer = null;
+	let saveInFlight = false;
+	let queuedSave = false;
+
+	const sendStateToServer = async () => {
+		if (!profileContext.isOwner) {
+			return true;
+		}
+
+		if (saveInFlight) {
+			queuedSave = true;
+			return true;
+		}
+
+		saveInFlight = true;
+		try {
+			const response = await fetch('{{ url_for("save_profile_dashboard_state") }}', {
+				method: 'POST',
+				headers: {
+					'Content-Type': 'application/json',
+					'X-CSRF-Token': csrfToken,
+				},
+				body: JSON.stringify({ state }),
+			});
+
+			const result = await response.json().catch(() => ({}));
+			if (!response.ok || !result.ok) {
+				showPopup(result.message || 'Could not save profile changes.', 'danger');
+				return false;
+			}
+
+			if (result.state && typeof result.state === 'object') {
+				state = normalizeState(result.state);
+				renderAll();
+			}
+
+			try {
+				window.localStorage.removeItem(legacyStorageKey);
+			} catch (_error) {
+				// ignore cleanup failures
+			}
+
+			return true;
+		} catch (_error) {
+			showPopup('Could not save profile changes.', 'danger');
+			return false;
+		} finally {
+			saveInFlight = false;
+			if (queuedSave) {
+				queuedSave = false;
+				void sendStateToServer();
+			}
+		}
+	};
+
+	const persistState = () => {
+		if (!profileContext.isOwner) {
+			return true;
+		}
+
+		if (saveTimer) {
+			window.clearTimeout(saveTimer);
+		}
+
+		saveTimer = window.setTimeout(() => {
+			void sendStateToServer();
+		}, 220);
+
+		return true;
+	};
+
+	const setText = (id, value) => {
+		const target = document.getElementById(id);
+		if (target) {
+			target.textContent = value;
+		}
+	};
+
+	const computeXP = () => {
+		const socialCount = Object.values(state.social).filter(Boolean).length;
+		return (
+			(profileContext.teachCount * 18)
+			+ (profileContext.learnCount * 12)
+			+ (profileContext.sessionsCount * 20)
+			+ (profileContext.reviewCount * 10)
+			+ (state.certificates.length * 8)
+			+ (state.projects.length * 14)
+			+ (state.posts.length * 6)
+			+ (socialCount * 5)
+		);
+	};
+
+	const formatDate = (value) => {
+		if (!value) {
+			return 'Recently';
+		}
+		const dateValue = new Date(value);
+		if (Number.isNaN(dateValue.getTime())) {
+			return 'Recently';
+		}
+		return dateValue.toLocaleDateString();
+	};
+
+	const renderSocialLinks = () => {
+		[
+			{ id: 'linkLinkedin', value: state.social.linkedin },
+			{ id: 'linkGithub', value: state.social.github },
+			{ id: 'linkPortfolio', value: state.social.portfolio },
+		].forEach((item) => {
+			const anchor = document.getElementById(item.id);
+			if (!anchor) {
+				return;
+			}
+
+			if (item.value) {
+				anchor.href = item.value;
+				anchor.style.display = 'inline-flex';
+			} else {
+				anchor.removeAttribute('href');
+				anchor.style.display = 'none';
+			}
+		});
+	};
+
+	const renderHeroStats = () => {
+		setText('heroSkillsTeach', String(profileContext.teachCount));
+		setText('heroSkillsLearn', String(profileContext.learnCount));
+		setText('heroSessions', String(profileContext.sessionsCount));
+		setText('heroReviews', String(profileContext.reviewCount));
+
+		const xp = Math.max(0, computeXP());
+		const level = Math.floor(xp / 100) + 1;
+		const progress = xp % 100;
+		const toNext = 100 - progress;
+
+		setText('xpProgress', String(progress));
+		setText('xpTarget', String(toNext));
+		setText('levelBadge', `Lvl ${level}`);
+
+		const bar = document.getElementById('xpBar');
+		if (bar) {
+			bar.style.width = `${progress}%`;
+		}
+	};
+
+	const renderAbout = () => {
+		setText('heroKicker', normalizeString(state.kicker, 'Student Profile'));
+		setText('heroName', profileContext.userName);
+		setText('heroHeadline', normalizeString(state.headline, 'Student at SkillLink'));
+		setText('aboutText', normalizeString(state.about, 'No bio provided.'));
+	};
+
+	const renderHeroBanner = () => {
+		const heroSection = document.getElementById('profileHeroSection');
+		const heroCard = document.querySelector('#profileHeroSection .profile-hero-dashboard');
+		if (!heroSection) {
+			return;
+		}
+
+		if (state.bannerImageDataUrl) {
+			heroSection.style.setProperty('--hero-image', `url("${state.bannerImageDataUrl}")`);
+			if (heroCard) {
+				heroCard.style.setProperty('--profile-card-image', `url("${state.bannerImageDataUrl}")`);
+			}
+		} else {
+			heroSection.style.removeProperty('--hero-image');
+			if (heroCard) {
+				heroCard.style.removeProperty('--profile-card-image');
+			}
+		}
+	};
+
+	const syncEditProfileForm = () => {
+		if (!editProfileForm) {
+			return;
+		}
+
+		if (editKickerInput) {
+			editKickerInput.value = state.kicker || 'Student Profile';
+		}
+		if (editHeadlineInput) {
+			editHeadlineInput.value = state.headline || '';
+		}
+		if (editAboutInput) {
+			editAboutInput.value = state.about || '';
+		}
+		if (editEduCollegeInput) {
+			editEduCollegeInput.value = state.education.college || 'N/A';
+		}
+		if (editEduDepartmentInput) {
+			editEduDepartmentInput.value = state.education.department || 'N/A';
+		}
+		if (editEduGraduationYearInput) {
+			editEduGraduationYearInput.value = state.education.graduationYear || '----';
+		}
+		if (editEduCgpaInput) {
+			editEduCgpaInput.value = state.education.cgpa || '--';
+		}
+		if (editEduEnrollmentInput) {
+			editEduEnrollmentInput.value = state.education.enrollment || '---';
+		}
+		if (editLinkedinInput) {
+			editLinkedinInput.value = state.social.linkedin || '';
+		}
+		if (editGithubInput) {
+			editGithubInput.value = state.social.github || '';
+		}
+		if (editPortfolioInput) {
+			editPortfolioInput.value = state.social.portfolio || '';
+		}
+		if (bannerUploadInput) {
+			bannerUploadInput.value = '';
+		}
+		if (bannerUploadInfo) {
+			bannerUploadInfo.textContent = state.bannerImageDataUrl
+				? 'Current banner image is active.'
+				: 'Allowed: JPG, PNG, GIF, WEBP. Max size: 4MB.';
+		}
+	};
+
+	const renderEducation = () => {
+		setText('eduCollege', state.education.college || 'N/A');
+		setText('eduDept', state.education.department || 'N/A');
+		setText('eduYear', state.education.graduationYear || '----');
+		setText('eduCgpa', state.education.cgpa || '--');
+		setText('eduEnrollment', state.education.enrollment || '---');
+	};
+
+	const renderResume = () => {
+		const linkResume = document.getElementById('linkResume');
+		if (!linkResume) {
+			return;
+		}
+
+		if (state.resume.dataUrl) {
+			linkResume.href = state.resume.dataUrl;
+			linkResume.download = state.resume.name || `resume-${profileContext.userId}.pdf`;
+			linkResume.style.display = 'inline-flex';
+			linkResume.textContent = state.resume.name ? `View Resume (${state.resume.name})` : 'View Resume';
+		} else {
+			linkResume.style.display = 'none';
+			linkResume.removeAttribute('href');
+		}
+	};
+
+	const renderCertificates = () => {
+		const container = document.getElementById('certificatesContainer');
+		if (!container) {
+			return;
+		}
+
+		container.innerHTML = '';
+		if (!state.certificates.length) {
+			const empty = document.createElement('p');
+			empty.className = 'small-muted profile-list-empty';
+			empty.textContent = 'No certificates uploaded.';
+			container.appendChild(empty);
+			return;
+		}
+
+		state.certificates.forEach((certificate) => {
+			const card = document.createElement('article');
+			card.className = 'profile-mini-card';
+
+			const content = document.createElement('div');
+			content.className = 'profile-mini-content';
+
+			const title = document.createElement('h4');
+			title.textContent = certificate.name || 'Certificate';
+
+			const meta = document.createElement('p');
+			meta.className = 'small-muted';
+			meta.textContent = `${certificate.type || 'File'} · ${formatDate(certificate.createdAt)}`;
+
+			content.appendChild(title);
+			content.appendChild(meta);
+
+			const actions = document.createElement('div');
+			actions.className = 'profile-mini-actions';
+
+			if (certificate.dataUrl) {
+				const viewButton = document.createElement('a');
+				viewButton.className = 'btn btn-outline btn-small';
+				viewButton.href = certificate.dataUrl;
+				viewButton.target = '_blank';
+				viewButton.rel = 'noopener noreferrer';
+				viewButton.textContent = 'View';
+				actions.appendChild(viewButton);
+			}
+
+			if (profileContext.isOwner) {
+				const removeButton = document.createElement('button');
+				removeButton.type = 'button';
+				removeButton.className = 'btn btn-small btn-outline';
+				removeButton.textContent = 'Remove';
+				removeButton.addEventListener('click', () => {
+					state.certificates = state.certificates.filter((item) => item.id !== certificate.id);
+					if (persistState()) {
+						renderAll();
+						showPopup('Certificate removed.', 'info');
+					}
+				});
+				actions.appendChild(removeButton);
+			}
+
+			card.appendChild(content);
+			card.appendChild(actions);
+			container.appendChild(card);
+		});
+	};
+
+	const renderProjects = () => {
+		const container = document.getElementById('projectsContainer');
+		if (!container) {
+			return;
+		}
+
+		container.innerHTML = '';
+		if (!state.projects.length) {
+			const empty = document.createElement('p');
+			empty.className = 'small-muted profile-list-empty';
+			empty.textContent = 'No projects added.';
+			container.appendChild(empty);
+			return;
+		}
+
+		state.projects.forEach((project) => {
+			const card = document.createElement('article');
+			card.className = 'profile-project-card';
+
+			if (project.imageDataUrl) {
+				const image = document.createElement('img');
+				image.src = project.imageDataUrl;
+				image.alt = `${project.title} preview`;
+				image.className = 'profile-project-media';
+				card.appendChild(image);
+			}
+
+			const title = document.createElement('h4');
+			title.textContent = project.title;
+			card.appendChild(title);
+
+			const description = document.createElement('p');
+			description.className = 'small-muted';
+			description.textContent = project.description;
+			card.appendChild(description);
+
+			const footer = document.createElement('div');
+			footer.className = 'profile-mini-actions';
+
+			if (project.link) {
+				const openLink = document.createElement('a');
+				openLink.className = 'btn btn-outline btn-small';
+				openLink.href = project.link;
+				openLink.target = '_blank';
+				openLink.rel = 'noopener noreferrer';
+				openLink.textContent = 'Open Link';
+				footer.appendChild(openLink);
+			}
+
+			if (profileContext.isOwner) {
+				const remove = document.createElement('button');
+				remove.type = 'button';
+				remove.className = 'btn btn-small btn-outline';
+				remove.textContent = 'Remove';
+				remove.addEventListener('click', () => {
+					state.projects = state.projects.filter((item) => item.id !== project.id);
+					if (persistState()) {
+						renderAll();
+						showPopup('Project removed.', 'info');
+					}
+				});
+				footer.appendChild(remove);
+			}
+
+			card.appendChild(footer);
+			container.appendChild(card);
+		});
+	};
+
+	const renderPosts = () => {
+		const container = document.getElementById('postsContainer');
+		if (!container) {
+			return;
+		}
+
+		container.innerHTML = '';
+		if (!state.posts.length) {
+			const empty = document.createElement('p');
+			empty.className = 'small-muted profile-list-empty';
+			empty.textContent = 'No posts yet.';
+			container.appendChild(empty);
+			return;
+		}
+
+		state.posts.forEach((post) => {
+			const card = document.createElement('article');
+			card.className = 'profile-post-card';
+
+			const header = document.createElement('div');
+			header.className = 'profile-post-header';
+
+			if (profileContext.profileImageUrl) {
+				const avatar = document.createElement('img');
+				avatar.className = 'profile-post-avatar';
+				avatar.src = profileContext.profileImageUrl;
+				avatar.alt = `${profileContext.userName} avatar`;
+				header.appendChild(avatar);
+			} else {
+				const fallback = document.createElement('div');
+				fallback.className = 'profile-post-avatar profile-post-avatar-fallback';
+				fallback.textContent = profileContext.fallbackInitial;
+				header.appendChild(fallback);
+			}
+
+			const headText = document.createElement('div');
+			const author = document.createElement('strong');
+			author.textContent = profileContext.userName;
+			const stamp = document.createElement('p');
+			stamp.className = 'small-muted';
+			stamp.textContent = formatDate(post.createdAt);
+			headText.appendChild(author);
+			headText.appendChild(stamp);
+			header.appendChild(headText);
+
+			card.appendChild(header);
+
+			const body = document.createElement('p');
+			body.className = 'profile-post-body';
+			body.textContent = post.content;
+			card.appendChild(body);
+
+			if (post.attachment && post.attachment.dataUrl) {
+				if ((post.attachment.type || '').startsWith('image/')) {
+					const image = document.createElement('img');
+					image.className = 'post-media';
+					image.src = post.attachment.dataUrl;
+					image.alt = post.attachment.name || 'Post attachment';
+					card.appendChild(image);
+				} else if ((post.attachment.type || '').startsWith('video/')) {
+					const video = document.createElement('video');
+					video.className = 'post-media';
+					video.controls = true;
+					video.src = post.attachment.dataUrl;
+					card.appendChild(video);
+				} else {
+					const link = document.createElement('a');
+					link.href = post.attachment.dataUrl;
+					link.target = '_blank';
+					link.rel = 'noopener noreferrer';
+					link.className = 'small-link';
+					link.textContent = post.attachment.name || 'Open attachment';
+					card.appendChild(link);
+				}
+			}
+
+			if (profileContext.isOwner) {
+				const actions = document.createElement('div');
+				actions.className = 'profile-mini-actions';
+				const remove = document.createElement('button');
+				remove.type = 'button';
+				remove.className = 'btn btn-small btn-outline';
+				remove.textContent = 'Delete';
+				remove.addEventListener('click', () => {
+					state.posts = state.posts.filter((item) => item.id !== post.id);
+					if (persistState()) {
+						renderAll();
+						showPopup('Post deleted.', 'info');
+					}
+				});
+				actions.appendChild(remove);
+				card.appendChild(actions);
+			}
+
+			container.appendChild(card);
+		});
+	};
+
+	const renderAll = () => {
+		renderHeroBanner();
+		renderSocialLinks();
+		renderHeroStats();
+		renderAbout();
+		renderEducation();
+		renderResume();
+		renderCertificates();
+		renderProjects();
+		renderPosts();
+		syncEditProfileForm();
+	};
+
+	if (!state.about && profileContext.bio) {
+		state.about = profileContext.bio;
+	}
+	if (!state.headline) {
+		state.headline = profileContext.bio || 'Student at SkillLink';
+	}
+	if (!state.kicker) {
+		state.kicker = 'Student Profile';
+	}
+
+	renderAll();
+
+	if (profileContext.isOwner && !hasMeaningfulData(initialDashboardState) && hasMeaningfulData(state)) {
+		void sendStateToServer();
+	}
+
+	if (!profileContext.isOwner) {
+		return;
+	}
+
+	if (editProfileSection) {
+		editProfileSection.hidden = true;
+	}
+
+	if (editProfileBtn && editProfileSection) {
+		editProfileBtn.addEventListener('click', () => {
+			editProfileSection.hidden = false;
+			editProfileSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
+			window.setTimeout(() => {
+				if (editHeadlineInput) {
+					editHeadlineInput.focus();
+				}
+			}, 220);
+		});
+	}
+
+	if (editEducationBtn && editProfileSection) {
+		editEducationBtn.addEventListener('click', () => {
+			editProfileSection.hidden = false;
+			editProfileSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
+			window.setTimeout(() => {
+				if (editEduCollegeInput) {
+					editEduCollegeInput.focus();
+				}
+			}, 220);
+		});
+	}
+
+	let pendingPostAttachment = null;
+
+	if (bannerUploadInput) {
+		bannerUploadInput.addEventListener('change', (event) => {
+			const selectedFile = event.target.files?.[0] || null;
+			if (!bannerUploadInfo) {
+				return;
+			}
+
+			bannerUploadInfo.textContent = selectedFile
+				? `${selectedFile.name} selected`
+				: (state.bannerImageDataUrl
+					? 'Current banner image is active.'
+					: 'Allowed: JPG, PNG, GIF, WEBP. Max size: 4MB.');
+		});
+	}
+
+	if (btnRemoveBanner) {
+		btnRemoveBanner.addEventListener('click', async () => {
+			if (!state.bannerImageDataUrl) {
+				showPopup('No banner image to remove.', 'info');
+				return;
+			}
+
+			state.bannerImageDataUrl = '';
+			renderAll();
+			if (saveTimer) {
+				window.clearTimeout(saveTimer);
+				saveTimer = null;
+			}
+			const saved = await sendStateToServer();
+			if (saved) {
+				showPopup('Profile banner removed.', 'info');
+			}
+		});
+	}
+
+	if (editProfileForm) {
+		editProfileForm.addEventListener('submit', async (event) => {
+			event.preventDefault();
+
+			let bannerImageDataUrl = state.bannerImageDataUrl;
+			const selectedBanner = bannerUploadInput?.files?.[0] || null;
+
+			if (selectedBanner) {
+				if (!selectedBanner.type.startsWith('image/')) {
+					showPopup('Banner must be an image file.', 'warning');
+					return;
+				}
+
+				if (selectedBanner.size > 8 * 1024 * 1024) {
+					showPopup('Banner image is too large (max 8MB).', 'warning');
+					return;
+				}
+
+				try {
+					bannerImageDataUrl = await buildBannerDataUrl(selectedBanner);
+				} catch (_error) {
+					showPopup('Could not read banner image.', 'danger');
+					return;
+				}
+
+				if (bannerImageDataUrl.length > 2_100_000) {
+					showPopup('Banner is still too large. Try a smaller image.', 'warning');
+					return;
+				}
+			}
+
+			state.kicker = normalizeString(editKickerInput?.value, 'Student Profile').slice(0, 40);
+			state.headline = normalizeString(editHeadlineInput?.value, 'Student at SkillLink').slice(0, 120);
+			state.about = normalizeString(editAboutInput?.value).slice(0, 1200);
+			state.education = {
+				college: normalizeString(editEduCollegeInput?.value, 'N/A').slice(0, 140),
+				department: normalizeString(editEduDepartmentInput?.value, 'N/A').slice(0, 140),
+				graduationYear: normalizeString(editEduGraduationYearInput?.value, '----').slice(0, 10),
+				cgpa: normalizeString(editEduCgpaInput?.value, '--').slice(0, 10),
+				enrollment: normalizeString(editEduEnrollmentInput?.value, '---').slice(0, 32),
+			};
+			state.social.linkedin = sanitizeExternalUrl(editLinkedinInput?.value || '');
+			state.social.github = sanitizeExternalUrl(editGithubInput?.value || '');
+			state.social.portfolio = sanitizeExternalUrl(editPortfolioInput?.value || '');
+			state.bannerImageDataUrl = sanitizeImageDataUrl(bannerImageDataUrl);
+
+			renderAll();
+			if (saveTimer) {
+				window.clearTimeout(saveTimer);
+				saveTimer = null;
+			}
+
+			const saved = await sendStateToServer();
+			if (saved) {
+				showPopup('Profile details updated.', 'success');
+			}
+		});
+	}
+
+	const resumeUploadInput = document.getElementById('resumeUploadInput');
+	if (resumeUploadInput) {
+		resumeUploadInput.addEventListener('change', async (event) => {
+			const selectedFile = event.target.files?.[0];
+			if (!selectedFile) {
+				return;
+			}
+
+			if (selectedFile.type !== 'application/pdf') {
+				showPopup('Only PDF resumes are allowed.', 'warning');
+				resumeUploadInput.value = '';
+				return;
+			}
+
+			if (selectedFile.size > 4 * 1024 * 1024) {
+				showPopup('Resume is too large (max 4MB).', 'warning');
+				resumeUploadInput.value = '';
+				return;
+			}
+
+			try {
+				const dataUrl = await readFileAsDataUrl(selectedFile);
+				state.resume = {
+					name: selectedFile.name,
+					dataUrl,
+				};
+
+				if (persistState()) {
+					renderAll();
+					showPopup('Resume uploaded.', 'success');
+				}
+			} catch (_error) {
+				showPopup('Could not read resume file.', 'danger');
+			}
+
+			resumeUploadInput.value = '';
+		});
+	}
+
+	const certUploadInput = document.getElementById('certUpload');
+	if (certUploadInput) {
+		certUploadInput.addEventListener('change', async (event) => {
+			const selectedFile = event.target.files?.[0];
+			if (!selectedFile) {
+				return;
+			}
+
+			const isAllowedType = selectedFile.type.startsWith('image/') || selectedFile.type === 'application/pdf';
+			if (!isAllowedType) {
+				showPopup('Use image or PDF for certificates.', 'warning');
+				certUploadInput.value = '';
+				return;
+			}
+
+			if (selectedFile.size > 4 * 1024 * 1024) {
+				showPopup('Certificate is too large (max 4MB).', 'warning');
+				certUploadInput.value = '';
+				return;
+			}
+
+			try {
+				const dataUrl = await readFileAsDataUrl(selectedFile);
+				state.certificates.unshift({
+					id: `${Date.now()}-${Math.random().toString(16).slice(2)}`,
+					name: selectedFile.name,
+					type: selectedFile.type || 'file',
+					dataUrl,
+					createdAt: new Date().toISOString(),
+				});
+
+				if (persistState()) {
+					renderAll();
+					showPopup('Certificate uploaded.', 'success');
+				}
+			} catch (_error) {
+				showPopup('Could not read certificate file.', 'danger');
+			}
+
+			certUploadInput.value = '';
+		});
+	}
+
+	const postAttachInput = document.getElementById('postAttach');
+	const postAttachInfo = document.getElementById('postAttachInfo');
+	if (postAttachInput) {
+		postAttachInput.addEventListener('change', (event) => {
+			pendingPostAttachment = event.target.files?.[0] || null;
+			if (postAttachInfo) {
+				postAttachInfo.textContent = pendingPostAttachment
+					? `${pendingPostAttachment.name} selected`
+					: '';
+			}
+		});
+	}
+
+	const btnCreatePost = document.getElementById('btnCreatePost');
+	if (btnCreatePost) {
+		btnCreatePost.addEventListener('click', async () => {
+			const postContent = document.getElementById('postContent');
+			if (!postContent) {
+				return;
+			}
+
+			const content = normalizeString(postContent.value);
+			if (!content && !pendingPostAttachment) {
+				showPopup('Write something or attach a file.', 'warning');
+				return;
+			}
+
+			if (content.length > 2000) {
+				showPopup('Post is too long (max 2000 chars).', 'warning');
+				return;
+			}
+
+			let attachment = null;
+			if (pendingPostAttachment) {
+				if (pendingPostAttachment.size > 4 * 1024 * 1024) {
+					showPopup('Attachment is too large (max 4MB).', 'warning');
+					return;
+				}
+
+				try {
+					attachment = {
+						name: pendingPostAttachment.name,
+						type: pendingPostAttachment.type || 'file',
+						dataUrl: await readFileAsDataUrl(pendingPostAttachment),
+					};
+				} catch (_error) {
+					showPopup('Could not read attachment.', 'danger');
+					return;
+				}
+			}
+
+			state.posts.unshift({
+				id: `${Date.now()}-${Math.random().toString(16).slice(2)}`,
+				content: content.slice(0, 2000),
+				attachment,
+				createdAt: new Date().toISOString(),
+			});
+
+			postContent.value = '';
+			pendingPostAttachment = null;
+			if (postAttachInput) {
+				postAttachInput.value = '';
+			}
+			if (postAttachInfo) {
+				postAttachInfo.textContent = '';
+			}
+			renderAll();
+			if (saveTimer) { window.clearTimeout(saveTimer); saveTimer = null; }
+			const postSaved = await sendStateToServer();
+			if (postSaved) {
+				showPopup('Post published.', 'success');
+			}
+		});
+	}
+})();
+</script>
+{% endblock %}

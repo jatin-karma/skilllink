@@ -1,0 +1,125 @@
+{% extends "base.html" %}
+
+{% block title %}Become a Mentor — SkillLink{% endblock %}
+
+{% block content %}
+<section class="hero hero-small hero-media-section hero-find-mentors">
+	<video class="hero-media" autoplay muted loop playsinline preload="metadata" poster="{{ url_for('static', filename='media/images/stats-bg.png') }}">
+		<source src="{{ url_for('static', filename='media/videos/hero-skills.mp4') }}" type="video/mp4">
+	</video>
+	<span class="hero-media-overlay" aria-hidden="true"></span>
+	<div class="hero-content">
+		<p class="hero-kicker">Share Your Knowledge</p>
+		<h1>Become a Mentor</h1>
+		<p>Teach what you know, help peers grow, and build your reputation in the SkillLink community.</p>
+		<div class="hero-actions">
+			{% if current_user %}
+			<a class="btn btn-primary" href="{{ url_for('profile_by_id', user_id=current_user.id) }}">Add a Teaching Skill</a>
+			{% else %}
+			<a class="btn btn-primary" href="{{ url_for('register') }}">Join as a Mentor</a>
+			<a class="btn btn-outline" href="{{ url_for('login') }}">Sign In</a>
+			{% endif %}
+		</div>
+	</div>
+</section>
+
+{# ── How it works ── #}
+<section class="section section-alt">
+	<div class="container">
+		<div class="section-title">
+			<p>Getting Started</p>
+			<h2>How It Works</h2>
+			<p class="section-subtitle">Three simple steps to start mentoring your peers.</p>
+		</div>
+		<div class="grid-3 mentor-steps">
+			<article class="feature-card mentor-step-card">
+				<span class="mentor-step-num">01</span>
+				<h4>Create Your Profile</h4>
+				<p>Sign up and fill in your skills, experience level, and a short bio so learners know what to expect from you.</p>
+			</article>
+			<article class="feature-card mentor-step-card">
+				<span class="mentor-step-num">02</span>
+				<h4>Add a Teaching Skill</h4>
+				<p>List the subjects you can teach — Python, Design, Communication, or anything you're confident in. Set your level.</p>
+			</article>
+			<article class="feature-card mentor-step-card">
+				<span class="mentor-step-num">03</span>
+				<h4>Accept & Run Sessions</h4>
+				<p>Learners book sessions with you directly. Accept their requests, run a live session, and earn community ratings.</p>
+			</article>
+		</div>
+	</div>
+</section>
+
+{# ── Why mentor section ── #}
+<section class="section">
+	<div class="container">
+		<div class="section-title">
+			<p>Why Mentor?</p>
+			<h2>Benefits of Teaching on SkillLink</h2>
+		</div>
+		<div class="grid-4">
+			<article class="feature-card">
+				<h4>Build Your XP</h4>
+				<p>Every session adds experience and credibility to your student profile.</p>
+			</article>
+			<article class="feature-card">
+				<h4>Sharpen Your Skills</h4>
+				<p>Teaching reinforces your own knowledge and reveals gaps you never noticed.</p>
+			</article>
+			<article class="feature-card">
+				<h4>Grow Your Network</h4>
+				<p>Connect with students across departments and build lasting academic relationships.</p>
+			</article>
+			<article class="feature-card">
+				<h4>Earn Ratings</h4>
+				<p>Positive reviews strengthen your public profile and attract more learners.</p>
+			</article>
+		</div>
+	</div>
+</section>
+
+{# ── Active mentors showcase ── #}
+{% if skills %}
+<section class="section section-tight">
+	<div class="container">
+		<div class="section-title">
+			<p>Join Them</p>
+			<h2>Active Mentors Right Now</h2>
+		</div>
+		<div class="grid-3">
+			{% for skill in skills[:6] %}
+			<article class="skill-card">
+				<div class="skill-top">
+					<h3>{{ skill.name }}</h3>
+					<span class="badge">{{ skill.category }}</span>
+				</div>
+				<p class="small-muted">Level: {{ skill.level }}</p>
+				<p class="small-muted">Mentor: <a href="{{ url_for('profile_by_id', user_id=skill.user_id) }}">{{ skill.mentor_name }}</a></p>
+				<p class="small-muted">Rating: {{ skill.mentor_rating }} / 5 ({{ skill.review_count }} reviews)</p>
+			</article>
+			{% endfor %}
+		</div>
+	</div>
+</section>
+{% endif %}
+
+{# ── Bottom CTA ── #}
+<section class="section section-tight">
+	<div class="container">
+		<div class="flow-global-cta panel">
+			<p class="hero-kicker">Ready to Teach?</p>
+			<h2>Start mentoring today — it only takes a minute.</h2>
+			<div class="hero-actions">
+				{% if current_user %}
+				<a class="btn btn-primary" href="{{ url_for('profile_by_id', user_id=current_user.id) }}">Go to My Profile</a>
+				<a class="btn btn-outline" href="{{ url_for('learn_skill') }}">Browse Learners</a>
+				{% else %}
+				<a class="btn btn-primary" href="{{ url_for('register') }}">Create Account</a>
+				<a class="btn btn-outline" href="{{ url_for('login') }}">Sign In</a>
+				{% endif %}
+			</div>
+		</div>
+	</div>
+</section>
+{% endblock %}

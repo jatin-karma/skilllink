@@ -1,0 +1,124 @@
+{% extends "base.html" %}
+{% block title %}{{ post.title }}{% endblock %}
+
+{% block content %}
+<section class="hero hero-small hero-image-section hero-image-discuss-post">
+	<div class="hero-content">
+		<p class="hero-kicker"><a class="discuss-hero-link" href="{{ url_for('discuss') }}">Discussion Board</a></p>
+		<h1>{{ post.title }}</h1>
+		<p class="discuss-topic-line">
+			<span class="badge badge-soft">{{ post.topic }}</span>
+			{% for tag in split_tags(post.tags) %}
+			<span class="discuss-tag">#{{ tag }}</span>
+			{% endfor %}
+		</p>
+		<p>
+			By <strong>{{ post.author_name }}</strong> · {{ post.created_at[:10] }}
+		</p>
+	</div>
+</section>
+
+<section class="section section-tight">
+	<div class="container discuss-post-layout">
+
+		<!-- Original Post -->
+		<div class="panel discuss-original">
+			<div class="discuss-post-body">{{ post.body }}</div>
+			<div class="discuss-post-footer">
+				<a class="small-muted" href="{{ url_for('profile_by_id', user_id=post.author_id) }}">View profile</a>
+				{% if current_user and current_user.id != post.user_id %}
+				<form method="post" action="{{ url_for('discuss_report_post', post_id=post.id) }}" class="discuss-report-form">
+					<input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+					<select name="reason" required>
+						<option value="">Report reason</option>
+						{% for reason in report_reasons %}
+						<option value="{{ reason }}">{{ reason }}</option>
+						{% endfor %}
+					</select>
+					<input name="details" type="text" maxlength="240" placeholder="Optional note">
+					<button class="btn btn-outline btn-small" type="submit">Report</button>
+				</form>
+				{% endif %}
+				{% if current_user and current_user.id == post.user_id %}
+				<form method="post" action="{{ url_for('discuss_delete', post_id=post.id) }}" class="inline-remove-form" onsubmit="return confirm('Delete this discussion? All replies will also be removed.');">
+					<input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+					<button class="btn btn-outline btn-small discuss-danger-btn" type="submit">Delete Discussion</button>
+				</form>
+				{% endif %}
+			</div>
+		</div>
+
+		<!-- Replies -->
+		<div class="discuss-replies-section">
+			<h3 class="discuss-replies-heading">
+				{{ replies|length }} Repl{{ 'y' if replies|length == 1 else 'ies' }}
+			</h3>
+
+			{% if replies %}
+			<div class="discuss-reply-list">
+				{% for reply in replies %}
+				<div class="discuss-reply-card{% if current_user and current_user.id == reply.user_id %} discuss-reply-mine{% endif %}">
+					<div class="discuss-reply-header">
+						<div class="discuss-reply-avatar">
+							{% if reply.author_image and current_user %}
+							<img src="{{ get_profile_image_url(reply.author_image) }}" alt="{{ reply.author_name }}">
+							{% else %}
+							<span>{{ reply.author_name[:1] | upper }}</span>
+							{% endif %}
+						</div>
+						<div>
+							<strong>{{ reply.author_name }}</strong>
+							<span class="small-muted"> · {{ reply.created_at[:10] }}</span>
+						</div>
+						{% if current_user and current_user.id == reply.user_id %}
+						<form method="post" action="{{ url_for('discuss_reply_delete', post_id=post.id, reply_id=reply.id) }}" class="inline-remove-form discuss-inline-end" onsubmit="return confirm('Delete this reply?');">
+							<input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+							<button class="btn btn-outline btn-small discuss-danger-btn discuss-danger-icon-btn" type="submit" title="Delete reply">✕</button>
+						</form>
+						{% elif current_user and current_user.id != reply.user_id %}
+						<form method="post" action="{{ url_for('discuss_report_reply', post_id=post.id, reply_id=reply.id) }}" class="discuss-report-inline discuss-inline-end">
+							<input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+							<select name="reason" required>
+								<option value="">Reason</option>
+								{% for reason in report_reasons %}
+								<option value="{{ reason }}">{{ reason }}</option>
+								{% endfor %}
+							</select>
+							<button class="btn btn-outline btn-small" type="submit">Report</button>
+						</form>
+						{% endif %}
+					</div>
+					<p class="discuss-reply-body">{{ reply.body }}</p>
+				</div>
+				{% endfor %}
+			</div>
+			{% else %}
+			<p class="small-muted">No replies yet — be the first to respond!</p>
+			{% endif %}
+
+			<!-- Reply Form -->
+			{% if current_user %}
+			<div class="panel discuss-reply-form-panel">
+				<h4>Add a Reply</h4>
+				<form method="post" action="{{ url_for('discuss_reply', post_id=post.id) }}" class="stack-form">
+					<input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+					<div class="form-group">
+						<textarea class="input" name="body" rows="4" maxlength="2000" placeholder="Write your reply…" required></textarea>
+						<p class="small-muted">Max 2000 characters.</p>
+					</div>
+					<button class="btn btn-primary btn-small" type="submit">Post Reply</button>
+				</form>
+			</div>
+			{% else %}
+			<p class="panel panel-center">
+				<a href="{{ url_for('login') }}">Log in</a> to post a reply.
+			</p>
+			{% endif %}
+		</div>
+
+		<div class="discuss-post-back-wrap">
+			<a class="btn btn-outline btn-small" href="{{ url_for('discuss') }}">← Back to Board</a>
+		</div>
+	</div>
+</section>
+{% endblock %}

@@ -1,0 +1,65 @@
+{% extends "base.html" %}
+
+{% block title %}Session Talk{% endblock %}
+
+{% block content %}
+<section class="hero hero-small hero-image-section hero-image-session">
+    <div class="hero-content">
+        <p class="hero-kicker">Talking Section</p>
+        <h1>{{ session_item.skill_name }} Appointment</h1>
+        <p>Coordinate the session, ask questions, and share updates before or during the class.</p>
+    </div>
+</section>
+
+<section class="section section-tight">
+    <div class="container session-chat-grid">
+        <article class="panel">
+            <h3>Appointment Details</h3>
+            <p><strong>Date & Time:</strong> {{ session_item.scheduled_for }}</p>
+            <p><strong>Status:</strong> <span class="status status-{{ session_item.status }}">{{ session_item.status }}</span></p>
+            <p><strong>Learner:</strong> {{ session_item.learner_name }}</p>
+            <p><strong>Mentor:</strong> {{ session_item.mentor_name }}</p>
+            <p><strong>Video Platform:</strong> {{ session_item.video_platform }}</p>
+            {% if session_item.meeting_link %}
+            <p><strong>Meeting Link:</strong>
+                <a href="{{ session_item.meeting_link }}" target="_blank" rel="noopener noreferrer">Open Appointment Link</a>
+            </p>
+            {% else %}
+            <p class="small-muted">Meeting link not provided yet.</p>
+            {% endif %}
+
+            {% if session_item.notes %}
+            <p><strong>Notes:</strong> {{ session_item.notes }}</p>
+            {% endif %}
+
+            <a class="btn btn-small btn-outline" href="{{ url_for('profile') }}">Back to Profile</a>
+        </article>
+
+        <article class="panel">
+            <h3>Conversation</h3>
+            <div class="chat-list">
+                {% for msg in messages %}
+                <div class="chat-item {% if current_user and msg.sender_id == current_user.id %}mine{% endif %}">
+                    <p class="chat-meta">
+                        <strong>{{ msg.sender_name }}</strong>
+                        <span>{{ msg.created_at }}</span>
+                    </p>
+                    <p class="chat-body">{{ msg.message }}</p>
+                </div>
+                {% else %}
+                <p class="small-muted">No messages yet. Start the conversation.</p>
+                {% endfor %}
+            </div>
+
+            <form class="stack-form" method="post" action="{{ url_for('add_session_message', session_id=session_item.id) }}">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                <div class="form-group">
+                    <label for="message">Send message</label>
+                    <textarea id="message" name="message" rows="3" placeholder="Write your message for this appointment..." required></textarea>
+                </div>
+                <button class="btn btn-primary" type="submit">Send</button>
+            </form>
+        </article>
+    </div>
+</section>
+{% endblock %}

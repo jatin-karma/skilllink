@@ -1,0 +1,75 @@
+{% extends "base.html" %}
+{% block title %}Moderation Queue{% endblock %}
+
+{% block content %}
+<section class="hero hero-small hero-image-section hero-image-admin">
+    <div class="hero-content">
+        <p class="hero-kicker">Admin</p>
+        <h1>Moderation Queue</h1>
+        <p>Review user reports and take moderation actions.</p>
+    </div>
+</section>
+
+<section class="section section-tight">
+    <div class="container discuss-post-layout">
+        {% if reports %}
+        <div class="moderation-list">
+            {% for item in reports %}
+            <article class="panel moderation-card">
+                <div class="moderation-head">
+                    <h3>Report #{{ item.id }} · {{ item.reason }}</h3>
+                    <p class="small-muted">By {{ item.reporter_name }} on {{ item.created_at[:10] }}</p>
+                </div>
+
+                {% if item.post_id %}
+                <p class="small-muted">Target: discussion post by <strong>{{ item.post_author_name or 'Unknown' }}</strong></p>
+                <p><strong>{{ item.post_title or 'Deleted post' }}</strong></p>
+                <p class="moderation-snippet">{{ (item.post_body or 'Post is no longer available.')[:420] }}</p>
+                {% if item.discussion_id %}
+                <a class="btn btn-outline btn-small" href="{{ url_for('discuss_post', post_id=item.discussion_id) }}">Open discussion</a>
+                {% endif %}
+                {% else %}
+                <p class="small-muted">Target: reply by <strong>{{ item.reply_author_name or 'Unknown' }}</strong></p>
+                <p class="moderation-snippet">{{ (item.reply_body or 'Reply is no longer available.')[:420] }}</p>
+                {% if item.reply_post_id %}
+                <a class="btn btn-outline btn-small" href="{{ url_for('discuss_post', post_id=item.reply_post_id) }}">Open thread</a>
+                {% endif %}
+                {% endif %}
+
+                {% if item.details %}
+                <p class="small-muted">Reporter note: {{ item.details }}</p>
+                {% endif %}
+
+                <div class="moderation-actions">
+                    <form method="post" action="{{ url_for('admin_report_action', report_id=item.id) }}">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                        <input type="hidden" name="action" value="resolve">
+                        <button class="btn btn-small btn-outline" type="submit">Resolve</button>
+                    </form>
+
+                    {% if item.post_id %}
+                    <form method="post" action="{{ url_for('admin_report_action', report_id=item.id) }}" onsubmit="return confirm('Remove this discussion post?');">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                        <input type="hidden" name="action" value="remove_post">
+                        <button class="btn btn-small btn-primary" type="submit">Remove Post</button>
+                    </form>
+                    {% elif item.reply_id %}
+                    <form method="post" action="{{ url_for('admin_report_action', report_id=item.id) }}" onsubmit="return confirm('Remove this reply?');">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                        <input type="hidden" name="action" value="remove_reply">
+                        <button class="btn btn-small btn-primary" type="submit">Remove Reply</button>
+                    </form>
+                    {% endif %}
+                </div>
+            </article>
+            {% endfor %}
+        </div>
+        {% else %}
+        <article class="panel">
+            <h3>No open reports</h3>
+            <p>Everything looks clean right now.</p>
+        </article>
+        {% endif %}
+    </div>
+</section>
+{% endblock %}

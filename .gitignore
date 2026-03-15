@@ -1,0 +1,39 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.pyc
+
+# Virtual environment
+.venv/
+venv/
+env/
+ENV/
+
+# Flask / SQLite database (contains real user data – never commit)
+*.db
+*.sqlite
+*.sqlite3
+
+# Uploaded user files (profile pictures, etc.)
+uploads/
+
+# Secrets / environment
+.env
+.env.*
+*.secret
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Editor
+.vscode/
+.idea/
+
+# Build / dist
+dist/
+build/
+*.egg-info/

@@ -1,0 +1,93 @@
+{% extends "base.html" %}
+{% block title %}Discussion Board{% endblock %}
+
+{% block content %}
+<section class="hero hero-small hero-image-section hero-image-discuss">
+	<div class="hero-content">
+		<p class="hero-kicker">Community</p>
+		<h1>Discussion Board</h1>
+		<p>Ask questions, share knowledge and discuss topics with fellow students.</p>
+	</div>
+</section>
+
+<section class="section section-tight">
+	<div class="container">
+		<div class="discuss-toolbar">
+			<form class="discuss-search-form" method="get" action="{{ url_for('discuss') }}">
+				<select class="input discuss-topic-select" name="topic" aria-label="Filter by topic">
+					<option value="">All topics</option>
+					{% for item in discussion_topics %}
+					<option value="{{ item }}" {% if topic == item %}selected{% endif %}>{{ item }}</option>
+					{% endfor %}
+				</select>
+				<input
+					class="input"
+					type="search"
+					name="q"
+					value="{{ q }}"
+					placeholder="Search discussions…"
+					aria-label="Search discussions"
+				>
+				<button class="btn btn-outline btn-small" type="submit">Search</button>
+				{% if q or topic %}
+				<a class="btn btn-outline btn-small" href="{{ url_for('discuss') }}">Clear</a>
+				{% endif %}
+			</form>
+			{% if current_user %}
+			<a class="btn btn-primary btn-small" href="{{ url_for('discuss_new') }}">+ New Discussion</a>
+			{% endif %}
+		</div>
+
+		{% if q or topic %}
+		<p class="small-muted discuss-results-note">
+			Showing results
+			{% if q %}for "<strong>{{ q }}</strong>"{% endif %}
+			{% if topic %}in <strong>{{ topic }}</strong>{% endif %}
+		</p>
+		{% endif %}
+
+		{% if posts %}
+		<div class="discuss-list">
+			{% for post in posts %}
+			<a class="discuss-card" href="{{ url_for('discuss_post', post_id=post.id) }}">
+				<div class="discuss-card-body">
+					<div class="discuss-card-topic-row">
+						<span class="badge badge-soft">{{ post.topic }}</span>
+						{% for tag in split_tags(post.tags) %}
+						<span class="discuss-tag">#{{ tag }}</span>
+						{% endfor %}
+					</div>
+					<h3 class="discuss-card-title">{{ post.title }}</h3>
+					<p class="discuss-card-preview">{{ post.body[:140] }}{% if post.body|length > 140 %}…{% endif %}</p>
+				</div>
+				<div class="discuss-card-meta">
+					<span>By <strong>{{ post.author_name }}</strong></span>
+					<span class="discuss-dot">·</span>
+					<span>{{ post.created_at[:10] }}</span>
+					<span class="discuss-dot">·</span>
+					<span class="discuss-reply-count">{{ post.reply_count }} repl{{ 'y' if post.reply_count == 1 else 'ies' }}</span>
+				</div>
+			</a>
+			{% endfor %}
+		</div>
+
+		{% if total_pages > 1 %}
+		<div class="pagination">
+			{% if page > 1 %}
+			<a class="btn btn-outline btn-small" href="{{ url_for('discuss', page=page-1, q=q, topic=topic) }}">← Prev</a>
+			{% endif %}
+			<span class="page-info">Page {{ page }} of {{ total_pages }}</span>
+			{% if page < total_pages %}
+			<a class="btn btn-outline btn-small" href="{{ url_for('discuss', page=page+1, q=q, topic=topic) }}">Next →</a>
+			{% endif %}
+		</div>
+		{% endif %}
+
+		{% else %}
+		<div class="empty-state">
+			<p>No discussions yet.{% if current_user %} Be the first to <a href="{{ url_for('discuss_new') }}">start one</a>!{% endif %}</p>
+		</div>
+		{% endif %}
+	</div>
+</section>
+{% endblock %}
