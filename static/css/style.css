@@ -608,6 +608,10 @@ main {
 
 .hero-image-profile {
     --hero-image: url("../media/images/testimonial-banner.png");
+    background:
+        linear-gradient(120deg, rgba(13, 5, 2, 0.72) 0%, rgba(45, 26, 14, 0.55) 52%, rgba(13, 5, 2, 0.62) 100%),
+        radial-gradient(circle at 88% 20%, rgba(212, 163, 115, 0.18) 0, transparent 42%),
+        var(--hero-image) center / cover no-repeat;
 }
 
 .hero-image-session {
