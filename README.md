@@ -188,3 +188,25 @@ All demo users use password: **`password123`**
 - Lightweight schema updates run automatically for existing DB files.
 - Keep project-owned media files in `static/media/images` or `static/media/videos`, not in the project root.
 - Uploaded profile images are stored in `uploads/profile_pics/` and served through `/media/profile/<filename>` for authenticated users.
+
+---
+
+## Git Workflow (Avoid Nested Duplicate Folder)
+
+- Keep this project as a single repo at `d:\Peertopeer`.
+- Do not run `git clone ...` inside `d:\Peertopeer`.
+- To update code, use pull in the same folder:
+
+```powershell
+cd d:\Peertopeer
+git pull origin master
+```
+
+- To publish changes:
+
+```powershell
+cd d:\Peertopeer
+git add .
+git commit -m "your message"
+git push origin master
+```

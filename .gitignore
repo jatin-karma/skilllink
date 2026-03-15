@@ -37,3 +37,6 @@ desktop.ini
 dist/
 build/
 *.egg-info/
+
+# Prevent accidental nested clone of this same repository
+skilllink/
