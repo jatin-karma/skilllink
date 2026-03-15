@@ -4,7 +4,7 @@
 
 {% block content %}
 <section class="hero hero-media-section hero-home-edge">
-	<video class="hero-media" autoplay muted loop playsinline preload="metadata" poster="{{ url_for('static', filename='media/images/stats-bg.png') }}">
+	<video class="hero-media" autoplay muted loop playsinline preload="auto" poster="{{ url_for('static', filename='media/images/stats-bg.png') }}">
 		<source src="{{ url_for('static', filename='media/videos/hero-home.mp4') }}" type="video/mp4">
 	</video>
 	<span class="hero-media-overlay" aria-hidden="true"></span>
