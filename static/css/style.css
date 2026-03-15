@@ -1362,23 +1362,19 @@ footer ul {
 }
 
 /* ── Be a Mentor section ── */
-.section-title .section-subtitle {
-    margin: 0.4rem auto 0;
+.section-subtitle {
+    margin-top: 0.4rem;
     color: rgba(255, 255, 255, 0.65);
     font-size: 0.97rem;
     max-width: 600px;
-    font-weight: 500;
-    letter-spacing: normal;
-    line-height: 1.6;
-    text-align: center;
-    text-transform: none;
-    text-wrap: balance;
-}
-
-.mentor-home-title .section-subtitle {
-    max-width: 48ch;
     margin-left: auto;
     margin-right: auto;
+    text-align: center;
+}
+
+/* Higher specificity (0,2,0) overrides .section-title p { margin:0 } (0,1,1) */
+.mentor-home-title .section-subtitle {
+    margin: 0.4rem auto 0;
     text-align: center;
 }
 
