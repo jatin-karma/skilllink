@@ -652,6 +652,31 @@
 			reader.readAsDataURL(file);
 		});
 
+	const buildPdfBlobUrlFromDataUrl = (dataUrl) => {
+		const parts = String(dataUrl || '').split(',', 2);
+		if (parts.length !== 2) {
+			return '';
+		}
+
+		const base64Payload = parts[1];
+		if (!base64Payload) {
+			return '';
+		}
+
+		try {
+			const binaryString = atob(base64Payload);
+			const bytes = new Uint8Array(binaryString.length);
+			for (let index = 0; index < binaryString.length; index += 1) {
+				bytes[index] = binaryString.charCodeAt(index);
+			}
+
+			const pdfBlob = new Blob([bytes], { type: 'application/pdf' });
+			return URL.createObjectURL(pdfBlob);
+		} catch (_error) {
+			return '';
+		}
+	};
+
 	const loadImageElement = (dataUrl) =>
 		new Promise((resolve, reject) => {
 			const image = new Image();
@@ -1152,7 +1177,7 @@
 
 		if (state.resume.dataUrl) {
 			linkResume.href = state.resume.dataUrl;
-			linkResume.download = state.resume.name || `resume-${profileContext.userId}.pdf`;
+			linkResume.removeAttribute('download');
 			linkResume.style.display = 'inline-flex';
 			linkResume.textContent = state.resume.name ? `View Resume (${state.resume.name})` : 'View Resume';
 			if (btnDeleteResume && profileContext.isOwner) {
@@ -1691,6 +1716,32 @@
 				renderAll();
 				showPopup('Resume deleted permanently.', 'success');
 			}
+		});
+	}
+
+	const linkResume = document.getElementById('linkResume');
+	if (linkResume) {
+		linkResume.addEventListener('click', (event) => {
+			const href = String(linkResume.getAttribute('href') || '').trim();
+			if (!href.toLowerCase().startsWith('data:application/pdf;base64,')) {
+				return;
+			}
+
+			event.preventDefault();
+			const blobUrl = buildPdfBlobUrlFromDataUrl(href);
+			if (!blobUrl) {
+				showPopup('Could not open resume preview.', 'danger');
+				return;
+			}
+
+			const previewTab = window.open(blobUrl, '_blank');
+			if (!previewTab) {
+				window.location.assign(blobUrl);
+			}
+
+			window.setTimeout(() => {
+				URL.revokeObjectURL(blobUrl);
+			}, 120000);
 		});
 	}
 
