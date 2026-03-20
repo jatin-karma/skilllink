@@ -1,0 +1,158 @@
+{% extends "base.html" %}
+
+{% block title %}Community{% endblock %}
+
+{% block content %}
+<section class="section section-tight">
+	<div class="container">
+		<div class="section-title left">
+			<p>Community Presence</p>
+			<h2>Latest Activity Posts</h2>
+		</div>
+
+		<div class="community-feed-list">
+			{% for post in community_posts %}
+			<article class="profile-post-card community-post-card">
+				<div class="profile-post-header">
+					{% if post.author_profile_image and current_user %}
+					<img
+						class="profile-post-avatar"
+						src="{{ get_profile_image_url(post.author_profile_image) }}"
+						alt="{{ post.author_name }} avatar"
+					>
+					{% else %}
+					<div class="profile-post-avatar profile-post-avatar-fallback">{{ post.author_name[:1] | upper }}</div>
+					{% endif %}
+
+					<div class="community-post-head-text">
+						<strong>
+							<a class="community-post-author" href="{{ url_for('profile_by_id', user_id=post.owner_id) }}">
+								{{ post.author_name }}
+							</a>
+						</strong>
+						<p class="small-muted community-post-time" data-created-at="{{ post.created_at }}">{{ post.created_at }}</p>
+					</div>
+				</div>
+
+				<p class="profile-post-body">{{ post.content }}</p>
+
+				{% if post.attachment and post.attachment.dataUrl %}
+					{% set attachment_type = post.attachment.type | default('', true) | string %}
+					{% if attachment_type.startswith('image/') %}
+					<img
+						class="post-media"
+						src="{{ post.attachment.dataUrl }}"
+						alt="{{ post.attachment.name or 'Post attachment' }}"
+						loading="lazy"
+					>
+					{% elif attachment_type.startswith('video/') %}
+					<video class="post-media" controls preload="metadata" src="{{ post.attachment.dataUrl }}"></video>
+					{% else %}
+					<a class="small-link" href="{{ post.attachment.dataUrl }}" target="_blank" rel="noopener noreferrer">
+						{{ post.attachment.name or 'Open attachment' }}
+					</a>
+					{% endif %}
+				{% endif %}
+
+				<div class="profile-mini-actions">
+					<button
+						type="button"
+						class="btn btn-small btn-outline post-like-btn{% if post.liked_by_current_user %} is-liked{% endif %}"
+						data-owner-id="{{ post.owner_id }}"
+						data-post-id="{{ post.post_id }}"
+						data-liked="{{ '1' if post.liked_by_current_user else '0' }}"
+						data-likes-count="{{ post.likes_count }}"
+						{% if not current_user %}disabled title="Log in to like posts"{% endif %}
+					>
+						{{ '♥ Liked' if post.liked_by_current_user else '♡ Like' }} ({{ post.likes_count }})
+					</button>
+				</div>
+			</article>
+			{% else %}
+			<article class="panel">
+				<h3>No activity posts yet</h3>
+				<p class="small-muted">Once users publish profile posts, they will appear here.</p>
+			</article>
+			{% endfor %}
+		</div>
+	</div>
+</section>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(() => {
+	const csrfToken = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '';
+
+	const formatLikeLabel = (liked, likesCount) => `${liked ? '♥ Liked' : '♡ Like'} (${likesCount})`;
+
+	document.querySelectorAll('.community-post-time[data-created-at]').forEach((timeElement) => {
+		const rawValue = timeElement.getAttribute('data-created-at') || '';
+		if (!rawValue) {
+			return;
+		}
+
+		const parsedDate = new Date(rawValue);
+		if (Number.isNaN(parsedDate.getTime())) {
+			return;
+		}
+
+		timeElement.textContent = parsedDate.toLocaleString([], {
+			year: 'numeric',
+			month: 'short',
+			day: 'numeric',
+			hour: '2-digit',
+			minute: '2-digit',
+		});
+	});
+
+	const likeButtons = document.querySelectorAll('.post-like-btn[data-owner-id][data-post-id]');
+	likeButtons.forEach((button) => {
+		if (button.disabled) {
+			return;
+		}
+
+		button.addEventListener('click', async () => {
+			if (button.dataset.loading === '1') {
+				return;
+			}
+
+			const ownerId = button.dataset.ownerId || '';
+			const postId = button.dataset.postId || '';
+			if (!ownerId || !postId) {
+				return;
+			}
+
+			button.dataset.loading = '1';
+			try {
+				const response = await fetch(
+					`/profile/${ownerId}/posts/${encodeURIComponent(postId)}/like`,
+					{
+						method: 'POST',
+						headers: {
+							'X-CSRF-Token': csrfToken,
+						},
+					}
+				);
+
+				const result = await response.json().catch(() => ({}));
+				if (!response.ok || !result.ok) {
+					return;
+				}
+
+				const liked = Boolean(result.liked);
+				const likesCount = Number(result.likesCount || 0);
+				button.dataset.liked = liked ? '1' : '0';
+				button.dataset.likesCount = String(likesCount);
+				button.classList.toggle('is-liked', liked);
+				button.textContent = formatLikeLabel(liked, likesCount);
+			} catch (_error) {
+				return;
+			} finally {
+				delete button.dataset.loading;
+			}
+		});
+	});
+})();
+</script>
+{% endblock %}

@@ -156,6 +156,7 @@ All demo users use password: **`password123`**
 | `GET /become-mentor` | Become a Mentor landing page |
 | `GET /learn` | Learn New Skill (browse & book) |
 | `GET /skills` | Legacy full skill search |
+| `GET /community` | Community feed for profile activity posts |
 | `GET /matches` | Recommended mentor matches (login required) |
 | `GET/POST /register` | Registration |
 | `GET/POST /login` | Login |
@@ -164,6 +165,7 @@ All demo users use password: **`password123`**
 | `GET /profile/edit` | Edit own profile (login required) |
 | `POST /profile/basic` | Update name/bio |
 | `POST /profile/dashboard/state` | Save dashboard JSON state |
+| `POST /profile/<id>/posts/<post_id>/like` | Toggle like on a profile activity post |
 | `POST /profile/picture` | Upload profile picture |
 | `POST /profile/picture/remove` | Remove profile picture |
 | `GET /media/profile/<filename>` | Serve profile picture (login required) |
@@ -175,6 +177,11 @@ All demo users use password: **`password123`**
 | `POST /sessions/<id>/review` | Submit a review |
 | `POST /sessions/<id>/messages` | Send a session message |
 | `GET /discuss` | Discussion board |
+| `GET/POST /discuss/private` | Private discussions (create/list joined rooms) |
+| `POST /discuss/private/join` | Join private discussion using invite code |
+| `GET /discuss/private/join/<code>` | Join private discussion using invite link |
+| `GET /discuss/private/<id>` | Private discussion room |
+| `POST /discuss/private/<id>/messages` | Send message in private discussion room |
 | `GET/POST /discuss/new` | Create a post |
 | `GET /discuss/<id>` | View a post + replies |
 | `POST /discuss/<id>/reply` | Add a reply |

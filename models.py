@@ -134,6 +134,54 @@ class DiscussionReply(db.Model):
     )
 
 
+class PrivateDiscussion(db.Model):
+    __tablename__ = "private_discussions"
+
+    id = db.Column(db.Integer, primary_key=True)
+    owner_id = db.Column(db.Integer, db.ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    title = db.Column(db.Text, nullable=False)
+    invite_code = db.Column(db.Text, nullable=False, unique=True)
+    created_at = db.Column(db.Text, server_default=text("CURRENT_TIMESTAMP"))
+
+    __table_args__ = (
+        Index("idx_private_discussions_owner", "owner_id", "created_at"),
+    )
+
+
+class PrivateDiscussionMember(db.Model):
+    __tablename__ = "private_discussion_members"
+
+    discussion_id = db.Column(
+        db.Integer,
+        db.ForeignKey("private_discussions.id", ondelete="CASCADE"),
+        primary_key=True,
+    )
+    user_id = db.Column(db.Integer, db.ForeignKey("users.id", ondelete="CASCADE"), primary_key=True)
+    joined_at = db.Column(db.Text, server_default=text("CURRENT_TIMESTAMP"))
+
+    __table_args__ = (
+        Index("idx_private_discussion_members_user", "user_id", "discussion_id"),
+    )
+
+
+class PrivateDiscussionMessage(db.Model):
+    __tablename__ = "private_discussion_messages"
+
+    id = db.Column(db.Integer, primary_key=True)
+    discussion_id = db.Column(
+        db.Integer,
+        db.ForeignKey("private_discussions.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    sender_id = db.Column(db.Integer, db.ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    message = db.Column(db.Text, nullable=False)
+    created_at = db.Column(db.Text, server_default=text("CURRENT_TIMESTAMP"))
+
+    __table_args__ = (
+        Index("idx_private_discussion_messages_discussion", "discussion_id", "created_at"),
+    )
+
+
 class DiscussionReport(db.Model):
     __tablename__ = "discussion_reports"
 

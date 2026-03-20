@@ -1617,9 +1617,50 @@ footer ul {
     flex: 1;
 }
 
+.discuss-quick-actions {
+    display: flex;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+    align-items: center;
+}
+
 .discuss-list {
     display: grid;
     gap: 0.8rem;
+}
+
+.private-room-list {
+    display: grid;
+    gap: 0.75rem;
+}
+
+.private-room-card {
+    border: 1px solid rgba(164, 113, 72, 0.25);
+}
+
+.private-room-grid {
+    display: grid;
+    grid-template-columns: minmax(300px, 0.95fr) minmax(340px, 1.25fr);
+    gap: 1rem;
+}
+
+.private-invite-row {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.private-invite-row .input {
+    min-width: 0;
+    flex: 1;
+}
+
+.private-invite-row .btn {
+    width: auto;
+}
+
+.private-message-list {
+    max-height: 460px;
 }
 
 .discuss-card {
@@ -1685,6 +1726,12 @@ footer ul {
 .discuss-back-link {
     margin-bottom: 1.2rem;
     display: inline-flex;
+}
+
+@media (max-width: 920px) {
+    .private-room-grid {
+        grid-template-columns: 1fr;
+    }
 }
 
 .discuss-results-note {
@@ -2130,24 +2177,56 @@ footer ul {
     background: rgba(0, 0, 0, 0.2);
 }
 
+.profile-post-card {
+    overflow: hidden;
+}
+
 .profile-mini-card {
     display: flex;
     justify-content: space-between;
     align-items: center;
     gap: 0.7rem;
     flex-wrap: wrap;
+    overflow: hidden;
+}
+
+.profile-mini-content {
+    min-width: 0;
+    flex: 1 1 240px;
 }
 
 .profile-mini-content h4,
 .profile-project-card h4 {
     margin: 0;
     font-size: 1rem;
+    overflow-wrap: anywhere;
 }
 
 .profile-mini-content p,
 .profile-project-card p {
     margin-top: 0.32rem;
     margin-bottom: 0;
+    overflow-wrap: anywhere;
+}
+
+.profile-certificate-preview-frame {
+    width: 100%;
+    aspect-ratio: 4 / 3;
+    border-radius: 0.65rem;
+    border: 1px solid rgba(164, 113, 72, 0.25);
+    background: rgba(255, 255, 255, 0.03);
+    margin-bottom: 0.6rem;
+    overflow: hidden;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.profile-certificate-preview {
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+    display: block;
 }
 
 .profile-mini-actions {
@@ -2193,6 +2272,8 @@ footer ul {
 .profile-attach-info {
     margin: 0;
     font-size: 0.82rem;
+    max-width: 100%;
+    overflow-wrap: anywhere;
 }
 
 .profile-activity-title {
@@ -2228,6 +2309,66 @@ footer ul {
     margin: 0;
     line-height: 1.68;
     white-space: pre-wrap;
+    overflow-wrap: anywhere;
+}
+
+.post-media {
+    width: 100%;
+    max-height: 320px;
+    object-fit: contain;
+    border-radius: 0.65rem;
+    border: 1px solid rgba(164, 113, 72, 0.25);
+    background: rgba(255, 255, 255, 0.03);
+    margin-top: 0.6rem;
+    display: block;
+}
+
+.profile-post-card .small-link {
+    display: inline-block;
+    margin-top: 0.55rem;
+    max-width: 100%;
+    overflow-wrap: anywhere;
+}
+
+.community-feed-list {
+    display: grid;
+    gap: 0.75rem;
+}
+
+.community-post-card {
+    width: 100%;
+    max-width: 820px;
+    margin: 0 auto;
+}
+
+.community-post-head-text {
+    min-width: 0;
+}
+
+.community-post-author {
+    color: #FFFFFF;
+    text-decoration: none;
+    font-weight: 700;
+}
+
+.community-post-author:hover {
+    color: #D4A373;
+    text-decoration: underline;
+}
+
+.community-post-time {
+    margin: 0.12rem 0 0;
+}
+
+.post-like-btn.is-liked {
+    border-color: rgba(95, 219, 151, 0.4);
+    background: rgba(95, 219, 151, 0.12);
+    color: var(--success);
+}
+
+.post-like-btn:disabled {
+    opacity: 0.7;
+    cursor: not-allowed;
 }
 
 .profile-modal-backdrop {

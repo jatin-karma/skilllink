@@ -70,7 +70,12 @@
 					<button class="btn btn-primary btn-small" type="submit">Edit Profile</button>
 				</form>
 			</div>
+			{% else %}
+			<div class="profile-control-row">
+				<a href="#" id="linkResume" class="btn btn-outline btn-small" target="_blank" rel="noopener noreferrer" style="display:none;">View Resume</a>
+			</div>
 			{% endif %}
+			<p id="profileInlineStatus" class="profile-inline-status" aria-live="polite"></p>
 		</div>
 	</div>
 </section>
@@ -574,6 +579,7 @@
 (() => {
 	const profileContext = {
 		userId: {{ user.id | tojson }},
+		viewerId: {{ (current_user.id if current_user else None) | tojson }},
 		userName: {{ user.name | tojson }},
 		bio: {{ (user.bio or "") | tojson }},
 		isOwner: {{ is_owner | tojson }},
@@ -612,6 +618,7 @@
 		projects: [],
 		posts: [],
 	};
+	const maxDashboardMediaChars = 5800000;
 
 	const cloneDefaultState = () => JSON.parse(JSON.stringify(defaultState));
 
@@ -694,6 +701,23 @@
 
 	const ensureArray = (value) => (Array.isArray(value) ? value : []);
 
+	const normalizeLikeUserIds = (value) => {
+		const uniqueUserIds = [];
+		if (!Array.isArray(value)) {
+			return uniqueUserIds;
+		}
+
+		value.forEach((rawUserId) => {
+			const userId = Number.parseInt(String(rawUserId), 10);
+			if (!Number.isInteger(userId) || userId <= 0 || uniqueUserIds.includes(userId)) {
+				return;
+			}
+			uniqueUserIds.push(userId);
+		});
+
+		return uniqueUserIds;
+	};
+
 	const sanitizeExternalUrl = (rawValue) => {
 		const value = normalizeString(rawValue);
 		if (!value) {
@@ -735,6 +759,10 @@
 			return '';
 		}
 
+		if (value.length > maxDashboardMediaChars) {
+			return '';
+		}
+
 		return value;
 	};
 
@@ -759,6 +787,19 @@
 
 	const normalizeState = (rawState) => {
 		const parsed = rawState && typeof rawState === 'object' ? rawState : {};
+		const posts = ensureArray(parsed.posts)
+			.map((item) => {
+				if (!item || typeof item !== 'object') {
+					return null;
+				}
+
+				return {
+					...item,
+					likesUserIds: normalizeLikeUserIds(item.likesUserIds),
+				};
+			})
+			.filter(Boolean);
+
 		return {
 			kicker: normalizeString(parsed.kicker, defaultState.kicker),
 			headline: normalizeString(parsed.headline, defaultState.headline),
@@ -782,8 +823,26 @@
 			},
 			certificates: ensureArray(parsed.certificates),
 			projects: ensureArray(parsed.projects),
-			posts: ensureArray(parsed.posts),
+			posts,
 		};
+	};
+
+	const postLikeMeta = (post) => {
+		const likesUserIds = normalizeLikeUserIds(post?.likesUserIds);
+		const likedByViewer = Number.isInteger(profileContext.viewerId)
+			? likesUserIds.includes(profileContext.viewerId)
+			: false;
+
+		return {
+			likesUserIds,
+			likedByViewer,
+			likesCount: likesUserIds.length,
+		};
+	};
+
+	const setLikeButtonState = (button, likedByViewer, likesCount) => {
+		button.classList.toggle('is-liked', likedByViewer);
+		button.textContent = `${likedByViewer ? '♥ Liked' : '♡ Like'} (${likesCount})`;
 	};
 
 	const hasMeaningfulData = (rawState) => {
@@ -939,6 +998,23 @@
 			return 'Recently';
 		}
 		return dateValue.toLocaleDateString();
+	};
+
+	const formatDateTime = (value) => {
+		if (!value) {
+			return 'Recently';
+		}
+		const dateValue = new Date(value);
+		if (Number.isNaN(dateValue.getTime())) {
+			return 'Recently';
+		}
+		return dateValue.toLocaleString([], {
+			year: 'numeric',
+			month: 'short',
+			day: 'numeric',
+			hour: '2-digit',
+			minute: '2-digit',
+		});
 	};
 
 	const renderSocialLinks = () => {
@@ -1105,6 +1181,19 @@
 			const content = document.createElement('div');
 			content.className = 'profile-mini-content';
 
+			if (certificate.dataUrl && (certificate.type || '').startsWith('image/')) {
+				const previewFrame = document.createElement('div');
+				previewFrame.className = 'profile-certificate-preview-frame';
+
+				const preview = document.createElement('img');
+				preview.className = 'profile-certificate-preview';
+				preview.src = certificate.dataUrl;
+				preview.alt = certificate.name || 'Certificate preview';
+				preview.loading = 'lazy';
+				previewFrame.appendChild(preview);
+				content.appendChild(previewFrame);
+			}
+
 			const title = document.createElement('h4');
 			title.textContent = certificate.name || 'Certificate';
 
@@ -1258,7 +1347,7 @@
 			author.textContent = profileContext.userName;
 			const stamp = document.createElement('p');
 			stamp.className = 'small-muted';
-			stamp.textContent = formatDate(post.createdAt);
+			stamp.textContent = formatDateTime(post.createdAt);
 			headText.appendChild(author);
 			headText.appendChild(stamp);
 			header.appendChild(headText);
@@ -1294,9 +1383,70 @@
 				}
 			}
 
+			const actions = document.createElement('div');
+			actions.className = 'profile-mini-actions';
+
+			const likeButton = document.createElement('button');
+			likeButton.type = 'button';
+			likeButton.className = 'btn btn-small btn-outline post-like-btn';
+			const initialLikeMeta = postLikeMeta(post);
+			setLikeButtonState(likeButton, initialLikeMeta.likedByViewer, initialLikeMeta.likesCount);
+
+			if (!Number.isInteger(profileContext.viewerId)) {
+				likeButton.disabled = true;
+				likeButton.title = 'Log in to like posts';
+			} else {
+				likeButton.addEventListener('click', async () => {
+					if (likeButton.dataset.loading === '1') {
+						return;
+					}
+
+					likeButton.dataset.loading = '1';
+					try {
+						const response = await fetch(
+							`/profile/${profileContext.userId}/posts/${encodeURIComponent(String(post.id))}/like`,
+							{
+								method: 'POST',
+								headers: {
+									'X-CSRF-Token': csrfToken,
+								},
+							}
+						);
+
+						const result = await response.json().catch(() => ({}));
+						if (!response.ok || !result.ok) {
+							showPopup(result.message || 'Could not update like.', 'danger');
+							return;
+						}
+
+						const updatedPost = state.posts.find((item) => String(item.id) === String(post.id));
+						if (updatedPost) {
+							const nextLikes = normalizeLikeUserIds(updatedPost.likesUserIds);
+							if (result.liked) {
+								if (!nextLikes.includes(profileContext.viewerId)) {
+									nextLikes.push(profileContext.viewerId);
+								}
+							} else {
+								updatedPost.likesUserIds = nextLikes.filter((userId) => userId !== profileContext.viewerId);
+							}
+
+							if (result.liked) {
+								updatedPost.likesUserIds = nextLikes;
+							}
+						}
+
+						setLikeButtonState(likeButton, Boolean(result.liked), Number(result.likesCount || 0));
+					} catch (_error) {
+						showPopup('Could not update like.', 'danger');
+					} finally {
+						delete likeButton.dataset.loading;
+					}
+				});
+			}
+
+			actions.appendChild(likeButton);
+
 			if (profileContext.isOwner) {
-				const actions = document.createElement('div');
-				actions.className = 'profile-mini-actions';
 				const remove = document.createElement('button');
 				remove.type = 'button';
 				remove.className = 'btn btn-small btn-outline';
@@ -1309,8 +1459,9 @@
 					}
 				});
 				actions.appendChild(remove);
-				card.appendChild(actions);
 			}
+
+			card.appendChild(actions);
 
 			container.appendChild(card);
 		});
@@ -1468,6 +1619,9 @@
 
 			const saved = await sendStateToServer();
 			if (saved) {
+				if (editProfileSection) {
+					editProfileSection.hidden = true;
+				}
 				showPopup('Profile details updated.', 'success');
 			}
 		});
@@ -1495,6 +1649,12 @@
 
 			try {
 				const dataUrl = await readFileAsDataUrl(selectedFile);
+				if (dataUrl.length > maxDashboardMediaChars) {
+					showPopup('Resume is too large after encoding. Use a smaller PDF.', 'warning');
+					resumeUploadInput.value = '';
+					return;
+				}
+
 				state.resume = {
 					name: selectedFile.name,
 					dataUrl,
@@ -1535,6 +1695,12 @@
 
 			try {
 				const dataUrl = await readFileAsDataUrl(selectedFile);
+				if (dataUrl.length > maxDashboardMediaChars) {
+					showPopup('Certificate is too large after encoding. Use a smaller file.', 'warning');
+					certUploadInput.value = '';
+					return;
+				}
+
 				state.certificates.unshift({
 					id: `${Date.now()}-${Math.random().toString(16).slice(2)}`,
 					name: selectedFile.name,
@@ -1595,10 +1761,16 @@
 				}
 
 				try {
+					const attachmentDataUrl = await readFileAsDataUrl(pendingPostAttachment);
+					if (attachmentDataUrl.length > maxDashboardMediaChars) {
+						showPopup('Attachment is too large after encoding. Use a smaller file.', 'warning');
+						return;
+					}
+
 					attachment = {
 						name: pendingPostAttachment.name,
 						type: pendingPostAttachment.type || 'file',
-						dataUrl: await readFileAsDataUrl(pendingPostAttachment),
+						dataUrl: attachmentDataUrl,
 					};
 				} catch (_error) {
 					showPopup('Could not read attachment.', 'danger');
@@ -1610,6 +1782,7 @@
 				id: `${Date.now()}-${Math.random().toString(16).slice(2)}`,
 				content: content.slice(0, 2000),
 				attachment,
+				likesUserIds: [],
 				createdAt: new Date().toISOString(),
 			});
 

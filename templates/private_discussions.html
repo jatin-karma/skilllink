@@ -1,0 +1,70 @@
+{% extends "base.html" %}
+{% block title %}Private Discussions{% endblock %}
+
+{% block content %}
+<section class="hero hero-small hero-image-section hero-image-discuss">
+	<div class="hero-content">
+		<p class="hero-kicker">Private Spaces</p>
+		<h1>Private Discussions</h1>
+		<p>Create invite-only discussion rooms and add members using a code or link.</p>
+	</div>
+</section>
+
+<section class="section section-tight">
+	<div class="container grid-2">
+		<article class="panel panel-accent">
+			<h3>Create Private Discussion</h3>
+			<form class="stack-form" method="post" action="{{ url_for('private_discussions') }}">
+				<input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+				<div class="form-group">
+					<label for="private_title">Discussion Title</label>
+					<input id="private_title" name="title" type="text" maxlength="120" placeholder="Project Team Room" required>
+				</div>
+				<button class="btn btn-primary" type="submit">Create Room</button>
+			</form>
+		</article>
+
+		<article class="panel">
+			<h3>Join with Invite Code</h3>
+			<form class="stack-form" method="post" action="{{ url_for('join_private_discussion_by_code') }}">
+				<input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+				<div class="form-group">
+					<label for="invite_code">Invite Code</label>
+					<input id="invite_code" name="invite_code" type="text" maxlength="16" placeholder="ABCD1234" required>
+				</div>
+				<button class="btn btn-outline" type="submit">Join Room</button>
+			</form>
+			<p class="small-muted">Room members can share invite links from inside a private room.</p>
+		</article>
+	</div>
+</section>
+
+<section class="section section-tight">
+	<div class="container">
+		<div class="section-title left">
+			<p>My Invite-Only Spaces</p>
+			<h2>Joined Private Discussions</h2>
+		</div>
+
+		{% if private_rooms %}
+		<div class="private-room-list">
+			{% for room in private_rooms %}
+			<article class="panel private-room-card">
+				<h3>{{ room.title }}</h3>
+				<p class="small-muted">Owner: {{ room.owner_name }}{% if room.owner_id == current_user.id %} (You){% endif %}</p>
+				<p class="small-muted">{{ room.member_count }} members · {{ room.message_count }} messages</p>
+				<p class="small-muted">Invite code: <strong>{{ room.invite_code }}</strong></p>
+				<div class="profile-mini-actions">
+					<a class="btn btn-primary btn-small" href="{{ url_for('private_discussion_room', discussion_id=room.id) }}">Open Room</a>
+				</div>
+			</article>
+			{% endfor %}
+		</div>
+		{% else %}
+		<article class="panel">
+			<p>No private discussions yet. Create one or join with an invite code.</p>
+		</article>
+		{% endif %}
+	</div>
+</section>
+{% endblock %}

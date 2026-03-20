@@ -2,7 +2,7 @@ import json
 import os
 import secrets
 import sqlite3
-from datetime import datetime
+from datetime import datetime, timezone
 from functools import wraps
 from urllib.parse import urlparse
 from uuid import uuid4
@@ -41,8 +41,9 @@ app.config["SQLALCHEMY_DATABASE_URI"] = (
     f"sqlite:///{app.config['DATABASE'].replace(os.sep, '/')}"
 )
 app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
-app.config["MAX_CONTENT_LENGTH"] = 4 * 1024 * 1024
-app.config["PROFILE_DASHBOARD_MAX_BYTES"] = 3 * 1024 * 1024
+app.config["MAX_CONTENT_LENGTH"] = 12 * 1024 * 1024
+app.config["PROFILE_UPLOAD_MAX_BYTES"] = 4 * 1024 * 1024
+app.config["PROFILE_DASHBOARD_MAX_BYTES"] = 10 * 1024 * 1024
 app.config["SESSION_COOKIE_HTTPONLY"] = True
 app.config["SESSION_COOKIE_SAMESITE"] = "Lax"
 app.config["SESSION_COOKIE_SECURE"] = IS_PRODUCTION
@@ -58,6 +59,10 @@ SKILL_LEVELS = ["Beginner", "Intermediate", "Advanced"]
 SKILL_TYPES = ["teach", "learn"]
 VIDEO_PLATFORMS = ["Google Meet", "Zoom", "Microsoft Teams", "Jitsi", "Other"]
 PROFILE_IMAGE_EXTENSIONS = {"png", "jpg", "gif", "webp"}
+PROFILE_DASHBOARD_MEDIA_MAX_CHARS = 5_800_000
+PROFILE_DASHBOARD_MAX_POST_LIKES = 500
+PRIVATE_DISCUSSION_INVITE_CODE_LENGTH = 8
+PRIVATE_DISCUSSION_INVITE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
 DISCUSSION_TOPICS = [
     "General",
     "Programming",
@@ -191,6 +196,93 @@ def sanitize_data_url(value: object, allowed_prefixes: tuple[str, ...], max_char
     return raw_value
 
 
+def normalize_post_like_user_ids(raw_likes: object) -> list[int]:
+    likes_user_ids: list[int] = []
+    if not isinstance(raw_likes, list):
+        return likes_user_ids
+
+    for raw_like_user_id in raw_likes[:PROFILE_DASHBOARD_MAX_POST_LIKES]:
+        if isinstance(raw_like_user_id, bool):
+            continue
+        try:
+            like_user_id = int(raw_like_user_id)
+        except (TypeError, ValueError):
+            continue
+        if like_user_id <= 0 or like_user_id in likes_user_ids:
+            continue
+        likes_user_ids.append(like_user_id)
+
+    return likes_user_ids
+
+
+def parse_dashboard_datetime(raw_value: object) -> datetime | None:
+    if not isinstance(raw_value, str):
+        return None
+
+    candidate = raw_value.strip()
+    if not candidate:
+        return None
+
+    if candidate.endswith("Z"):
+        candidate = f"{candidate[:-1]}+00:00"
+
+    try:
+        parsed_value = datetime.fromisoformat(candidate)
+    except ValueError:
+        return None
+
+    if parsed_value.tzinfo is not None:
+        return parsed_value.astimezone(timezone.utc).replace(tzinfo=None)
+
+    return parsed_value
+
+
+def generate_private_discussion_invite_code(db_conn: sqlite3.Connection) -> str:
+    for _ in range(20):
+        invite_code = "".join(
+            secrets.choice(PRIVATE_DISCUSSION_INVITE_ALPHABET)
+            for _ in range(PRIVATE_DISCUSSION_INVITE_CODE_LENGTH)
+        )
+        existing = db_conn.execute(
+            "SELECT 1 FROM private_discussions WHERE invite_code = ?",
+            (invite_code,),
+        ).fetchone()
+        if existing is None:
+            return invite_code
+
+    return uuid4().hex[:12].upper()
+
+
+def user_is_private_discussion_member(
+    db_conn: sqlite3.Connection,
+    discussion_id: int,
+    user_id: int,
+) -> bool:
+    membership = db_conn.execute(
+        """
+        SELECT 1
+        FROM private_discussion_members
+        WHERE discussion_id = ? AND user_id = ?
+        """,
+        (discussion_id, user_id),
+    ).fetchone()
+    return membership is not None
+
+
+def add_private_discussion_member(
+    db_conn: sqlite3.Connection,
+    discussion_id: int,
+    user_id: int,
+) -> None:
+    db_conn.execute(
+        """
+        INSERT OR IGNORE INTO private_discussion_members (discussion_id, user_id)
+        VALUES (?, ?)
+        """,
+        (discussion_id, user_id),
+    )
+
+
 def default_profile_dashboard_state() -> dict:
     return {
         "kicker": "Student Profile",
@@ -230,7 +322,7 @@ def sanitize_profile_dashboard_state(raw_state: object) -> dict:
     sanitized["bannerImageDataUrl"] = sanitize_data_url(
         raw_state.get("bannerImageDataUrl"),
         DATA_URL_PREFIXES["profile_banner"],
-        max_chars=2_200_000,
+        max_chars=PROFILE_DASHBOARD_MEDIA_MAX_CHARS,
     )
 
     social = raw_state.get("social")
@@ -256,7 +348,7 @@ def sanitize_profile_dashboard_state(raw_state: object) -> dict:
         resume_data = sanitize_data_url(
             resume.get("dataUrl"),
             DATA_URL_PREFIXES["resume"],
-            max_chars=2_200_000,
+            max_chars=PROFILE_DASHBOARD_MEDIA_MAX_CHARS,
         )
         sanitized["resume"] = {
             "name": normalize_free_text(resume.get("name"), 180),
@@ -272,7 +364,7 @@ def sanitize_profile_dashboard_state(raw_state: object) -> dict:
             data_url = sanitize_data_url(
                 item.get("dataUrl"),
                 DATA_URL_PREFIXES["certificate"],
-                max_chars=2_200_000,
+                max_chars=PROFILE_DASHBOARD_MEDIA_MAX_CHARS,
             )
             if not data_url:
                 continue
@@ -301,7 +393,7 @@ def sanitize_profile_dashboard_state(raw_state: object) -> dict:
             image_data = sanitize_data_url(
                 item.get("imageDataUrl"),
                 DATA_URL_PREFIXES["project_image"],
-                max_chars=2_200_000,
+                max_chars=PROFILE_DASHBOARD_MEDIA_MAX_CHARS,
             )
 
             sanitized["projects"].append(
@@ -329,7 +421,7 @@ def sanitize_profile_dashboard_state(raw_state: object) -> dict:
                 attachment_data = sanitize_data_url(
                     attachment.get("dataUrl"),
                     DATA_URL_PREFIXES["post_attachment"],
-                    max_chars=2_400_000,
+                    max_chars=PROFILE_DASHBOARD_MEDIA_MAX_CHARS,
                 )
                 if attachment_data:
                     attachment_entry = {
@@ -341,10 +433,13 @@ def sanitize_profile_dashboard_state(raw_state: object) -> dict:
             if not content and not attachment_entry:
                 continue
 
+            likes_user_ids = normalize_post_like_user_ids(item.get("likesUserIds"))
+
             post_entry = {
                 "id": normalize_free_text(item.get("id"), 80, uuid4().hex),
                 "content": content,
                 "createdAt": normalize_free_text(item.get("createdAt"), 40, datetime.utcnow().isoformat()),
+                "likesUserIds": likes_user_ids,
             }
             if attachment_entry:
                 post_entry["attachment"] = attachment_entry
@@ -426,6 +521,14 @@ def detect_profile_image_extension(file_stream) -> str | None:
     if len(file_header) >= 12 and file_header[:4] == b"RIFF" and file_header[8:12] == b"WEBP":
         return "webp"
     return None
+
+
+def get_uploaded_file_size(uploaded_file) -> int:
+    current_position = uploaded_file.stream.tell()
+    uploaded_file.stream.seek(0, os.SEEK_END)
+    size = uploaded_file.stream.tell()
+    uploaded_file.stream.seek(current_position)
+    return size
 
 
 def profile_image_url(filename: str | None) -> str | None:
@@ -546,7 +649,7 @@ def disable_html_cache(response):
 
 @app.errorhandler(RequestEntityTooLarge)
 def handle_too_large_file(_error):
-    flash("File is too large. Maximum allowed size is 4MB.", "danger")
+    flash("Upload is too large. Reduce file size and try again.", "danger")
     return redirect(request.referrer or url_for("profile"))
 
 
@@ -731,7 +834,12 @@ def register():
         name = normalize_text(request.form.get("name", ""))
         email = normalize_text(request.form.get("email", "")).lower()
         password = request.form.get("password", "")
-        bio = normalize_text(request.form.get("bio", ""))
+        bio = normalize_free_text(request.form.get("bio"), 1200)
+        college_name = normalize_free_text(request.form.get("college_name"), 140, "N/A")
+        department = normalize_free_text(request.form.get("department"), 140, "N/A")
+        enrollment_number = normalize_free_text(request.form.get("enrollment_number"), 32, "---")
+        graduation_year = normalize_free_text(request.form.get("graduation_year"), 10, "----")
+        address = normalize_free_text(request.form.get("address"), 300)
 
         if not name or not email or not password:
             flash("Name, email, and password are required.", "danger")
@@ -750,6 +858,20 @@ def register():
                 (name, email, generate_password_hash(password), bio),
             )
             db.commit()
+
+            profile_state = sanitize_profile_dashboard_state(
+                {
+                    "about": address,
+                    "education": {
+                        "college": college_name,
+                        "department": department,
+                        "graduationYear": graduation_year,
+                        "cgpa": "--",
+                        "enrollment": enrollment_number,
+                    },
+                }
+            )
+            save_profile_dashboard_state_for_user(cursor.lastrowid, profile_state)
         except sqlite3.IntegrityError:
             flash("An account with this email already exists.", "danger")
             return render_template("register.html")
@@ -874,6 +996,71 @@ def learn_skill():
     )
     filters = {"q": query_text, "category": category, "level": level, "min_rating": min_rating_raw}
     return render_template("learn_skill.html", skills=skill_rows, categories=categories, filters=filters)
+
+
+@app.route("/community")
+def community():
+    current_user_id = g.current_user["id"] if g.current_user else None
+    dashboard_rows = get_db().execute(
+        """
+        SELECT
+            pd.user_id,
+            pd.state_json,
+            pd.updated_at,
+            u.name AS user_name,
+            u.profile_image AS user_profile_image
+        FROM profile_dashboards pd
+        JOIN users u ON u.id = pd.user_id
+        WHERE TRIM(COALESCE(pd.state_json, '')) != ''
+        ORDER BY datetime(pd.updated_at) DESC, pd.user_id ASC
+        """
+    ).fetchall()
+
+    community_posts: list[dict] = []
+    for row in dashboard_rows:
+        if current_user_id is not None and row["user_id"] == current_user_id:
+            continue
+
+        try:
+            raw_state = json.loads(row["state_json"])
+            sanitized_state = sanitize_profile_dashboard_state(raw_state)
+
+            for post in sanitized_state.get("posts", []):
+                if not isinstance(post, dict):
+                    continue
+
+                post_id = normalize_free_text(post.get("id"), 80)
+                if not post_id:
+                    continue
+
+                likes_user_ids = normalize_post_like_user_ids(post.get("likesUserIds"))
+                attachment = post.get("attachment") if isinstance(post.get("attachment"), dict) else None
+                created_at = normalize_free_text(post.get("createdAt"), 40, row["updated_at"] or "")
+
+                community_posts.append(
+                    {
+                        "owner_id": row["user_id"],
+                        "post_id": post_id,
+                        "author_name": row["user_name"],
+                        "author_profile_image": row["user_profile_image"] or "",
+                        "content": normalize_free_text(post.get("content"), 2000),
+                        "attachment": attachment,
+                        "created_at": created_at,
+                        "likes_count": len(likes_user_ids),
+                        "liked_by_current_user": bool(
+                            current_user_id is not None and current_user_id in likes_user_ids
+                        ),
+                    }
+                )
+        except (TypeError, ValueError, KeyError):
+            continue
+
+    community_posts.sort(
+        key=lambda item: parse_dashboard_datetime(item["created_at"]) or datetime.min,
+        reverse=True,
+    )
+
+    return render_template("community.html", community_posts=community_posts)
 
 
 @app.route("/matches")
@@ -1164,6 +1351,44 @@ def save_profile_dashboard_state():
     return {"ok": True, "state": state}
 
 
+@app.route("/profile/<int:user_id>/posts/<path:post_id>/like", methods=["POST"])
+@login_required
+def toggle_profile_post_like(user_id: int, post_id: str):
+    dashboard_state = get_profile_dashboard_state(user_id)
+    posts = dashboard_state.get("posts", [])
+
+    target_post: dict | None = None
+    for post_item in posts:
+        if not isinstance(post_item, dict):
+            continue
+        if str(post_item.get("id", "")) == post_id:
+            target_post = post_item
+            break
+
+    if target_post is None:
+        return {"ok": False, "message": "Post not found."}, 404
+
+    viewer_id = g.current_user["id"]
+    likes_user_ids = normalize_post_like_user_ids(target_post.get("likesUserIds"))
+
+    if viewer_id in likes_user_ids:
+        likes_user_ids.remove(viewer_id)
+        liked = False
+    else:
+        likes_user_ids.append(viewer_id)
+        liked = True
+
+    target_post["likesUserIds"] = likes_user_ids
+
+    sanitized_state = sanitize_profile_dashboard_state(dashboard_state)
+    serialized_state = json.dumps(sanitized_state, ensure_ascii=False, separators=(",", ":"))
+    if len(serialized_state.encode("utf-8")) > app.config["PROFILE_DASHBOARD_MAX_BYTES"]:
+        return {"ok": False, "message": "Profile data is too large. Reduce media size or items."}, 413
+
+    save_profile_dashboard_state_for_user(user_id, sanitized_state)
+    return {"ok": True, "liked": liked, "likesCount": len(likes_user_ids)}
+
+
 @app.route("/media/profile/<path:filename>")
 @login_required
 def profile_image_file(filename: str):
@@ -1195,6 +1420,10 @@ def update_profile_picture():
     safe_name = secure_filename(uploaded_file.filename)
     if not safe_name:
         flash("Invalid filename. Please rename the file and try again.", "danger")
+        return redirect(url_for("profile_by_id", user_id=g.current_user["id"]))
+
+    if get_uploaded_file_size(uploaded_file) > app.config["PROFILE_UPLOAD_MAX_BYTES"]:
+        flash("Profile picture is too large. Maximum allowed size is 4MB.", "danger")
         return redirect(url_for("profile_by_id", user_id=g.current_user["id"]))
 
     if not is_allowed_profile_image(safe_name):
@@ -1392,10 +1621,247 @@ def add_session_message(session_id: int):
 
 # ── Discussion Board ──────────────────────────────────────────────────────────
 
+@app.route("/discuss/private", methods=["GET", "POST"])
+@login_required
+def private_discussions():
+    db = get_db()
+    user_id = g.current_user["id"]
+
+    if request.method == "POST":
+        title = normalize_text(request.form.get("title", ""))
+        if not title:
+            flash("Discussion title is required.", "danger")
+            return redirect(url_for("private_discussions"))
+        if len(title) > 120:
+            flash("Discussion title must be 120 characters or less.", "warning")
+            return redirect(url_for("private_discussions"))
+
+        invite_code = generate_private_discussion_invite_code(db)
+        cursor = db.execute(
+            """
+            INSERT INTO private_discussions (owner_id, title, invite_code)
+            VALUES (?, ?, ?)
+            """,
+            (user_id, title, invite_code),
+        )
+        discussion_id = cursor.lastrowid
+        add_private_discussion_member(db, discussion_id, user_id)
+        db.commit()
+
+        flash("Private discussion created. Share the invite code or link.", "success")
+        return redirect(url_for("private_discussion_room", discussion_id=discussion_id))
+
+    private_rooms = db.execute(
+        """
+        SELECT
+            pd.id,
+            pd.title,
+            pd.invite_code,
+            pd.created_at,
+            pd.owner_id,
+            owner.name AS owner_name,
+            (
+                SELECT COUNT(*)
+                FROM private_discussion_members pm
+                WHERE pm.discussion_id = pd.id
+            ) AS member_count,
+            (
+                SELECT COUNT(*)
+                FROM private_discussion_messages msg
+                WHERE msg.discussion_id = pd.id
+            ) AS message_count
+        FROM private_discussions pd
+        JOIN private_discussion_members me
+            ON me.discussion_id = pd.id
+           AND me.user_id = ?
+        JOIN users owner ON owner.id = pd.owner_id
+        ORDER BY datetime(pd.created_at) DESC, pd.id DESC
+        """,
+        (user_id,),
+    ).fetchall()
+
+    return render_template("private_discussions.html", private_rooms=private_rooms)
+
+
+@app.route("/discuss/private/join", methods=["POST"])
+@login_required
+def join_private_discussion_by_code():
+    invite_code = normalize_text(request.form.get("invite_code", "")).upper()
+    if not invite_code:
+        flash("Invite code is required.", "danger")
+        return redirect(url_for("private_discussions"))
+
+    db = get_db()
+    discussion = db.execute(
+        """
+        SELECT id, title
+        FROM private_discussions
+        WHERE invite_code = ?
+        """,
+        (invite_code,),
+    ).fetchone()
+    if discussion is None:
+        flash("Invite code is invalid.", "danger")
+        return redirect(url_for("private_discussions"))
+
+    user_id = g.current_user["id"]
+    already_member = user_is_private_discussion_member(db, discussion["id"], user_id)
+    add_private_discussion_member(db, discussion["id"], user_id)
+    db.commit()
+
+    if already_member:
+        flash("You are already a member of this private discussion.", "info")
+    else:
+        flash(f"Joined private discussion: {discussion['title']}", "success")
+
+    return redirect(url_for("private_discussion_room", discussion_id=discussion["id"]))
+
+
+@app.route("/discuss/private/join/<string:invite_code>")
+@login_required
+def join_private_discussion_by_link(invite_code: str):
+    normalized_code = normalize_text(invite_code).upper()
+    if not normalized_code:
+        flash("Invalid invite link.", "danger")
+        return redirect(url_for("private_discussions"))
+
+    db = get_db()
+    discussion = db.execute(
+        """
+        SELECT id, title
+        FROM private_discussions
+        WHERE invite_code = ?
+        """,
+        (normalized_code,),
+    ).fetchone()
+    if discussion is None:
+        flash("Invite link is invalid or expired.", "danger")
+        return redirect(url_for("private_discussions"))
+
+    user_id = g.current_user["id"]
+    already_member = user_is_private_discussion_member(db, discussion["id"], user_id)
+    add_private_discussion_member(db, discussion["id"], user_id)
+    db.commit()
+
+    if already_member:
+        flash("You are already in this private discussion.", "info")
+    else:
+        flash(f"Joined private discussion: {discussion['title']}", "success")
+
+    return redirect(url_for("private_discussion_room", discussion_id=discussion["id"]))
+
+
+@app.route("/discuss/private/<int:discussion_id>")
+@login_required
+def private_discussion_room(discussion_id: int):
+    db = get_db()
+    user_id = g.current_user["id"]
+
+    discussion = db.execute(
+        """
+        SELECT
+            pd.id,
+            pd.title,
+            pd.invite_code,
+            pd.created_at,
+            pd.owner_id,
+            owner.name AS owner_name
+        FROM private_discussions pd
+        JOIN users owner ON owner.id = pd.owner_id
+        WHERE pd.id = ?
+        """,
+        (discussion_id,),
+    ).fetchone()
+
+    if discussion is None:
+        flash("Private discussion not found.", "danger")
+        return redirect(url_for("private_discussions"))
+
+    if not user_is_private_discussion_member(db, discussion_id, user_id):
+        flash("You are not a member of this private discussion.", "danger")
+        return redirect(url_for("private_discussions"))
+
+    members = db.execute(
+        """
+        SELECT u.id, u.name
+        FROM private_discussion_members pm
+        JOIN users u ON u.id = pm.user_id
+        WHERE pm.discussion_id = ?
+        ORDER BY u.name ASC
+        """,
+        (discussion_id,),
+    ).fetchall()
+
+    messages = db.execute(
+        """
+        SELECT
+            msg.id,
+            msg.message,
+            msg.created_at,
+            msg.sender_id,
+            u.name AS sender_name
+        FROM private_discussion_messages msg
+        JOIN users u ON u.id = msg.sender_id
+        WHERE msg.discussion_id = ?
+        ORDER BY datetime(msg.created_at) ASC, msg.id ASC
+        """,
+        (discussion_id,),
+    ).fetchall()
+
+    invite_link = url_for(
+        "join_private_discussion_by_link",
+        invite_code=discussion["invite_code"],
+        _external=True,
+    )
+
+    return render_template(
+        "private_discussion_room.html",
+        discussion=discussion,
+        members=members,
+        messages=messages,
+        invite_link=invite_link,
+    )
+
+
+@app.route("/discuss/private/<int:discussion_id>/messages", methods=["POST"])
+@login_required
+def private_discussion_message(discussion_id: int):
+    db = get_db()
+    user_id = g.current_user["id"]
+
+    if not user_is_private_discussion_member(db, discussion_id, user_id):
+        flash("You are not allowed to post in this private discussion.", "danger")
+        return redirect(url_for("private_discussions"))
+
+    message = normalize_text(request.form.get("message", ""))
+    if not message:
+        flash("Message cannot be empty.", "danger")
+        return redirect(url_for("private_discussion_room", discussion_id=discussion_id))
+    if len(message) > 2000:
+        flash("Message must be 2000 characters or less.", "warning")
+        return redirect(url_for("private_discussion_room", discussion_id=discussion_id))
+
+    db.execute(
+        """
+        INSERT INTO private_discussion_messages (discussion_id, sender_id, message)
+        VALUES (?, ?, ?)
+        """,
+        (discussion_id, user_id, message),
+    )
+    db.commit()
+
+    return redirect(url_for("private_discussion_room", discussion_id=discussion_id))
+
+
 @app.route("/discuss")
 def discuss():
     db = get_db()
-    page = max(1, int(request.args.get("page", 1)))
+    page_raw = request.args.get("page", "1")
+    try:
+        page = int(page_raw)
+    except (TypeError, ValueError):
+        page = 1
+    page = max(1, page)
     per_page = 15
     offset = (page - 1) * per_page
     q = normalize_text(request.args.get("q", ""))

@@ -96,6 +96,62 @@ def ensure_schema_updates() -> None:
         ON profile_dashboards(updated_at DESC)
         """
     )
+
+    db_conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS private_discussions (
+            id INTEGER PRIMARY KEY,
+            owner_id INTEGER NOT NULL,
+            title TEXT NOT NULL,
+            invite_code TEXT NOT NULL UNIQUE,
+            created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY(owner_id) REFERENCES users(id) ON DELETE CASCADE
+        )
+        """
+    )
+    db_conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS private_discussion_members (
+            discussion_id INTEGER NOT NULL,
+            user_id INTEGER NOT NULL,
+            joined_at TEXT DEFAULT CURRENT_TIMESTAMP,
+            PRIMARY KEY(discussion_id, user_id),
+            FOREIGN KEY(discussion_id) REFERENCES private_discussions(id) ON DELETE CASCADE,
+            FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
+        )
+        """
+    )
+    db_conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS private_discussion_messages (
+            id INTEGER PRIMARY KEY,
+            discussion_id INTEGER NOT NULL,
+            sender_id INTEGER NOT NULL,
+            message TEXT NOT NULL,
+            created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY(discussion_id) REFERENCES private_discussions(id) ON DELETE CASCADE,
+            FOREIGN KEY(sender_id) REFERENCES users(id) ON DELETE CASCADE
+        )
+        """
+    )
+    db_conn.execute(
+        """
+        CREATE INDEX IF NOT EXISTS idx_private_discussions_owner
+        ON private_discussions(owner_id, created_at DESC)
+        """
+    )
+    db_conn.execute(
+        """
+        CREATE INDEX IF NOT EXISTS idx_private_discussion_members_user
+        ON private_discussion_members(user_id, discussion_id)
+        """
+    )
+    db_conn.execute(
+        """
+        CREATE INDEX IF NOT EXISTS idx_private_discussion_messages_discussion
+        ON private_discussion_messages(discussion_id, created_at ASC)
+        """
+    )
     db_conn.commit()
 
 

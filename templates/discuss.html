@@ -34,7 +34,12 @@
 				{% endif %}
 			</form>
 			{% if current_user %}
-			<a class="btn btn-primary btn-small" href="{{ url_for('discuss_new') }}">+ New Discussion</a>
+			<div class="discuss-quick-actions">
+				<a class="btn btn-outline btn-small" href="{{ url_for('private_discussions') }}">Private Discussion</a>
+				<a class="btn btn-primary btn-small" href="{{ url_for('discuss_new') }}">+ New Discussion</a>
+			</div>
+			{% else %}
+			<a class="btn btn-outline btn-small" href="{{ url_for('login', next=url_for('private_discussions')) }}">Private Discussion</a>
 			{% endif %}
 		</div>
 

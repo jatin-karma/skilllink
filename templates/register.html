@@ -89,22 +89,7 @@
             confirmInput.reportValidity();
             return;
         }
-
-        const collegeName = document.getElementById('collegeName')?.value.trim() || '';
-        const department = document.getElementById('department')?.value.trim() || '';
-        const enrollmentNumber = document.getElementById('enrollmentNumber')?.value.trim() || '';
-        const graduationYear = document.getElementById('graduationYear')?.value.trim() || '';
-        const address = document.getElementById('address')?.value.trim() || '';
-
-        const bioParts = [
-            collegeName ? `College: ${collegeName}` : '',
-            department ? `Department: ${department}` : '',
-            graduationYear ? `Graduation: ${graduationYear}` : '',
-            enrollmentNumber ? `Enrollment: ${enrollmentNumber}` : '',
-            address ? `Address: ${address}` : '',
-        ].filter(Boolean);
-
-        bioHidden.value = bioParts.join(' | ').slice(0, 250);
+        bioHidden.value = '';
         confirmInput.setCustomValidity('');
     });
 })();

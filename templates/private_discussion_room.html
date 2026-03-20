@@ -1,0 +1,102 @@
+{% extends "base.html" %}
+{% block title %}Private Discussion{% endblock %}
+
+{% block content %}
+<section class="hero hero-small hero-image-section hero-image-discuss">
+	<div class="hero-content">
+		<p class="hero-kicker">Invite-Only Room</p>
+		<h1>{{ discussion.title }}</h1>
+		<p>Only invited members can view and send messages in this discussion.</p>
+	</div>
+</section>
+
+<section class="section section-tight">
+	<div class="container private-room-grid">
+		<article class="panel panel-accent">
+			<div class="profile-mini-actions">
+				<a class="btn btn-outline btn-small" href="{{ url_for('private_discussions') }}">← Back to Private Discussions</a>
+			</div>
+			<h3>Invite Members</h3>
+			<p class="small-muted">Owner: {{ discussion.owner_name }}{% if discussion.owner_id == current_user.id %} (You){% endif %}</p>
+
+			<div class="form-group">
+				<label for="inviteCodeField">Invite Code</label>
+				<div class="private-invite-row">
+					<input id="inviteCodeField" class="input" type="text" value="{{ discussion.invite_code }}" readonly>
+					<button type="button" class="btn btn-outline btn-small copy-private-field-btn" data-target="inviteCodeField">Copy</button>
+				</div>
+			</div>
+
+			<div class="form-group">
+				<label for="inviteLinkField">Invite Link</label>
+				<div class="private-invite-row">
+					<input id="inviteLinkField" class="input" type="text" value="{{ invite_link }}" readonly>
+					<button type="button" class="btn btn-outline btn-small copy-private-field-btn" data-target="inviteLinkField">Copy</button>
+				</div>
+			</div>
+
+			<h4>Members</h4>
+			<div class="badge-wrap">
+				{% for member in members %}
+				<span class="badge{% if member.id == current_user.id %} badge-soft{% endif %}">{{ member.name }}</span>
+				{% endfor %}
+			</div>
+		</article>
+
+		<article class="panel">
+			<h3>Private Messages</h3>
+			<div class="chat-list private-message-list">
+				{% for msg in messages %}
+				<div class="chat-item {% if current_user and msg.sender_id == current_user.id %}mine{% endif %}">
+					<p class="chat-meta">
+						<strong>{{ msg.sender_name }}</strong>
+						<span>{{ msg.created_at }}</span>
+					</p>
+					<p class="chat-body">{{ msg.message }}</p>
+				</div>
+				{% else %}
+				<p class="small-muted">No messages yet. Start the private discussion.</p>
+				{% endfor %}
+			</div>
+
+			<form class="stack-form" method="post" action="{{ url_for('private_discussion_message', discussion_id=discussion.id) }}">
+				<input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+				<div class="form-group">
+					<label for="privateMessage">Send message</label>
+					<textarea id="privateMessage" name="message" rows="3" placeholder="Write a private message..." required></textarea>
+				</div>
+				<button class="btn btn-primary" type="submit">Send</button>
+			</form>
+		</article>
+	</div>
+</section>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(() => {
+	const copyButtons = document.querySelectorAll('.copy-private-field-btn[data-target]');
+	copyButtons.forEach((button) => {
+		button.addEventListener('click', async () => {
+			const targetId = button.getAttribute('data-target') || '';
+			const input = document.getElementById(targetId);
+			if (!(input instanceof HTMLInputElement)) {
+				return;
+			}
+
+			const originalLabel = button.textContent || 'Copy';
+			try {
+				await navigator.clipboard.writeText(input.value || '');
+				button.textContent = 'Copied';
+			} catch (_error) {
+				button.textContent = 'Copy failed';
+			}
+
+			window.setTimeout(() => {
+				button.textContent = originalLabel;
+			}, 1400);
+		});
+	});
+})();
+</script>
+{% endblock %}
