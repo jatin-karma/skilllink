@@ -66,6 +66,7 @@
 					Upload Resume
 					<input type="file" id="resumeUploadInput" accept="application/pdf" hidden>
 				</label>
+				<button id="btnDeleteResume" class="btn btn-outline btn-small" style="display:none; color: #ff6b6b;" type="button">Delete Resume</button>
 				<form method="get" action="{{ url_for('edit_profile', user_id=user.id) }}" class="inline-remove-form">
 					<button class="btn btn-primary btn-small" type="submit">Edit Profile</button>
 				</form>
@@ -1144,6 +1145,7 @@
 
 	const renderResume = () => {
 		const linkResume = document.getElementById('linkResume');
+		const btnDeleteResume = document.getElementById('btnDeleteResume');
 		if (!linkResume) {
 			return;
 		}
@@ -1153,9 +1155,15 @@
 			linkResume.download = state.resume.name || `resume-${profileContext.userId}.pdf`;
 			linkResume.style.display = 'inline-flex';
 			linkResume.textContent = state.resume.name ? `View Resume (${state.resume.name})` : 'View Resume';
+			if (btnDeleteResume && profileContext.isOwner) {
+				btnDeleteResume.style.display = 'inline-flex';
+			}
 		} else {
 			linkResume.style.display = 'none';
 			linkResume.removeAttribute('href');
+			if (btnDeleteResume) {
+				btnDeleteResume.style.display = 'none';
+			}
 		}
 	};
 
@@ -1669,6 +1677,20 @@
 			}
 
 			resumeUploadInput.value = '';
+		});
+	}
+
+	const btnDeleteResume = document.getElementById('btnDeleteResume');
+	if (btnDeleteResume) {
+		btnDeleteResume.addEventListener('click', async () => {
+			if (!confirm('Are you sure you want to delete your resume? This cannot be undone.')) {
+				return;
+			}
+			state.resume = { name: '', dataUrl: '' };
+			if (persistState()) {
+				renderAll();
+				showPopup('Resume deleted permanently.', 'success');
+			}
 		});
 	}
 

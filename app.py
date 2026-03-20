@@ -479,6 +479,7 @@ def save_profile_dashboard_state_for_user(user_id: int, state: dict) -> None:
         (user_id, serialized_state),
     )
     get_db().commit()
+    get_db().commit()
 
 
 def get_csrf_token() -> str:
@@ -1393,11 +1394,22 @@ def save_profile_dashboard_state():
         return {"ok": False, "message": "Invalid request payload."}, 400
 
     state = sanitize_profile_dashboard_state(payload.get("state"))
-    serialized_state = json.dumps(state, ensure_ascii=False, separators=(",", ":"))
+    
+    db_state = dict(state)
+    db_state["resume"] = {"name": state["resume"].get("name", ""), "dataUrl": ""}
+    db_state["certificates"] = [
+        {"id": cert.get("id"), "name": cert.get("name"), "type": cert.get("type"), "createdAt": cert.get("createdAt"), "dataUrl": ""}
+        for cert in state.get("certificates", [])
+    ]
+    db_state["projects"] = [
+        {**proj, "imageDataUrl": ""} for proj in state.get("projects", [])
+    ]
+    
+    serialized_state = json.dumps(db_state, ensure_ascii=False, separators=(",", ":"))
     if len(serialized_state.encode("utf-8")) > app.config["PROFILE_DASHBOARD_MAX_BYTES"]:
         return {"ok": False, "message": "Profile data is too large. Reduce media size or items."}, 413
 
-    save_profile_dashboard_state_for_user(g.current_user["id"], state)
+    save_profile_dashboard_state_for_user(g.current_user["id"], db_state)
     return {"ok": True, "state": state}
 
 
