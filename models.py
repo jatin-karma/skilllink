@@ -55,6 +55,13 @@ class LearningSession(db.Model):
     __table_args__ = (
         CheckConstraint("status IN ('scheduled', 'completed', 'cancelled')", name="ck_sessions_status"),
         Index("idx_sessions_participants", "learner_id", "mentor_id"),
+        Index(
+            "idx_sessions_mentor_skill_unique",
+            "mentor_id",
+            "skill_name",
+            unique=True,
+            sqlite_where=text("status = 'scheduled'"),
+        ),
     )
 
 

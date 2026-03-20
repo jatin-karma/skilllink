@@ -152,6 +152,13 @@ def ensure_schema_updates() -> None:
         ON private_discussion_messages(discussion_id, created_at ASC)
         """
     )
+    db_conn.execute(
+        """
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_sessions_mentor_skill_unique
+        ON sessions(mentor_id, skill_name)
+        WHERE status = 'scheduled'
+        """
+    )
     db_conn.commit()
 
 

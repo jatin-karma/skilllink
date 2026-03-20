@@ -2,7 +2,7 @@ import json
 import os
 import secrets
 import sqlite3
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from functools import wraps
 from urllib.parse import urlparse
 from uuid import uuid4
@@ -1091,6 +1091,17 @@ def add_skill():
         flash("Invalid skill type selected.", "danger")
         return redirect(request.referrer or url_for("profile", user_id=g.current_user["id"]))
 
+    existing_skill = get_db().execute(
+        "SELECT id FROM skills WHERE user_id = ? AND LOWER(name) = ? AND skill_type = ?",
+        (g.current_user["id"], name.lower(), skill_type),
+    ).fetchone()
+    if existing_skill:
+        flash(
+            f"You already have '{name}' in your {skill_type} skills. You cannot add the same skill twice.",
+            "warning",
+        )
+        return redirect(request.referrer or url_for("profile", user_id=g.current_user["id"]))
+
     get_db().execute(
         """
         INSERT INTO skills (user_id, name, category, level, skill_type)
@@ -1143,6 +1154,45 @@ def schedule_session():
         scheduled_dt = datetime.fromisoformat(scheduled_raw)
     except ValueError:
         flash("Please provide a valid date and time.", "danger")
+        return redirect(request.referrer or url_for("matches"))
+
+    existing_session = db.execute(
+        "SELECT id FROM sessions WHERE mentor_id = ? AND skill_name = ? AND status = ?",
+        (mentor_id, skill_name, "scheduled"),
+    ).fetchone()
+    if existing_session:
+        flash(
+            f"This mentor already has a scheduled session for '{skill_name}'. Please choose a different skill or wait for the current session to complete/be cancelled.",
+            "danger",
+        )
+        return redirect(request.referrer or url_for("matches"))
+
+    learner_duplicate = db.execute(
+        "SELECT id FROM sessions WHERE learner_id = ? AND mentor_id = ? AND skill_name = ? AND status IN (?, ?)",
+        (learner_id, mentor_id, skill_name, "scheduled", "completed"),
+    ).fetchone()
+    if learner_duplicate:
+        flash(
+            f"You already have an active or completed session with this mentor for '{skill_name}'. Please wait until it ends or is cancelled before booking again.",
+            "danger",
+        )
+        return redirect(request.referrer or url_for("matches"))
+
+    overlapping_session = db.execute(
+        """
+        SELECT id FROM sessions
+        WHERE learner_id = ?
+          AND status IN (?, ?)
+          AND datetime(scheduled_for) < datetime(?)
+          AND datetime(datetime(scheduled_for, '+1 hour')) > datetime(?)
+        """,
+        (learner_id, "scheduled", "completed", (scheduled_dt + timedelta(hours=1)).strftime("%Y-%m-%d %H:%M:00"), scheduled_dt.strftime("%Y-%m-%d %H:%M:00")),
+    ).fetchone()
+    if overlapping_session:
+        flash(
+            "You already have another session scheduled during this time (sessions are assumed to be 1 hour). Please choose a different time.",
+            "danger",
+        )
         return redirect(request.referrer or url_for("matches"))
 
     db.execute(

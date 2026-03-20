@@ -32,6 +32,22 @@
             <p><strong>Notes:</strong> {{ session_item.notes }}</p>
             {% endif %}
 
+            {% if current_user and current_user.id == session_item.mentor_id and session_item.status == 'scheduled' %}
+            <form method="post" action="{{ url_for('update_session_status', session_id=session_item.id) }}" style="display: inline;">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                <input type="hidden" name="status" value="completed">
+                <button type="submit" class="btn btn-small btn-success">Mark as Completed</button>
+            </form>
+            {% endif %}
+
+            {% if current_user and session_item.status == 'scheduled' and (current_user.id == session_item.mentor_id or current_user.id == session_item.learner_id) %}
+            <form method="post" action="{{ url_for('update_session_status', session_id=session_item.id) }}" style="display: inline;">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                <input type="hidden" name="status" value="cancelled">
+                <button type="submit" class="btn btn-small btn-outline" style="color: #ff6b6b;">Cancel Session</button>
+            </form>
+            {% endif %}
+
             <a class="btn btn-small btn-outline" href="{{ url_for('profile') }}">Back to Profile</a>
         </article>
 

@@ -56,9 +56,54 @@
                     <input type="hidden" name="mentor_id" value="{{ match.mentor_id }}">
                     <input type="hidden" name="skill_name" value="{{ match.name }}">
                     <div class="form-group compact">
-                        <label for="match-when-{{ loop.index }}">Schedule</label>
-                        <input id="match-when-{{ loop.index }}" name="scheduled_for" type="datetime-local" required>
+                        <label>Schedule Date & Time</label>
+                        <div class="schedule-quick-select" style="display: flex; gap: 8px; margin-bottom: 8px;">
+                            <button type="button" class="btn btn-small btn-outline schedule-today-btn" data-form-index="{{ loop.index }}">Today</button>
+                            <button type="button" class="btn btn-small btn-outline schedule-tomorrow-btn" data-form-index="{{ loop.index }}">Tomorrow</button>
+                        </div>
+                        <div style="display: flex; gap: 8px; align-items: center;">
+                            <input type="date" class="schedule-date-input" data-form-index="{{ loop.index }}" style="flex: 1;" required>
+                            <input type="time" class="schedule-time-input" data-form-index="{{ loop.index }}" value="10:00" style="flex: 0.8;" required>
+                        </div>
+                        <input id="match-when-{{ loop.index }}" name="scheduled_for" type="hidden" required>
                     </div>
+                    <script>
+                    (function() {
+                        const idx = "{{ loop.index }}";
+                        const dateInput = document.querySelector(`.schedule-date-input[data-form-index="${idx}"]`);
+                        const timeInput = document.querySelector(`.schedule-time-input[data-form-index="${idx}"]`);
+                        const datetimeInput = document.getElementById(`match-when-${idx}`);
+                        const todayBtn = document.querySelector(`.schedule-today-btn[data-form-index="${idx}"]`);
+                        const tomorrowBtn = document.querySelector(`.schedule-tomorrow-btn[data-form-index="${idx}"]`);
+                        
+                        function setDateToday() {
+                            const today = new Date();
+                            dateInput.value = today.toISOString().split('T')[0];
+                            timeInput.value = '10:00';
+                            updateDatetimeInput();
+                        }
+                        function setDateTomorrow() {
+                            const tomorrow = new Date();
+                            tomorrow.setDate(tomorrow.getDate() + 1);
+                            dateInput.value = tomorrow.toISOString().split('T')[0];
+                            timeInput.value = '10:00';
+                            updateDatetimeInput();
+                        }
+                        function updateDatetimeInput() {
+                            if (dateInput.value && timeInput.value) {
+                                datetimeInput.value = `${dateInput.value}T${timeInput.value}`;
+                            }
+                        }
+                        todayBtn.addEventListener('click', (e) => { e.preventDefault(); setDateToday(); });
+                        tomorrowBtn.addEventListener('click', (e) => { e.preventDefault(); setDateTomorrow(); });
+                        dateInput.addEventListener('change', updateDatetimeInput);
+                        timeInput.addEventListener('change', updateDatetimeInput);
+                        const today = new Date();
+                        dateInput.value = today.toISOString().split('T')[0];
+                        timeInput.value = '10:00';
+                        updateDatetimeInput();
+                    })();
+                    </script>
                     <div class="form-group compact">
                         <label for="match-note-{{ loop.index }}">Notes</label>
                         <textarea id="match-note-{{ loop.index }}" name="notes" rows="2" placeholder="Session objective"></textarea>
