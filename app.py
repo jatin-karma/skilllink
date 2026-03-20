@@ -7,7 +7,7 @@ from functools import wraps
 from urllib.parse import urlparse
 from uuid import uuid4
 
-from flask import Flask, abort, flash, g, jsonify, redirect, render_template, request, send_from_directory, session, url_for
+from flask import Flask, abort, flash, g, redirect, render_template, request, send_from_directory, session, url_for
 from database import close_db, get_db, initialize_database
 from extensions import db
 from query_services import (
@@ -48,12 +48,6 @@ app.config["SESSION_COOKIE_HTTPONLY"] = True
 app.config["SESSION_COOKIE_SAMESITE"] = "Lax"
 app.config["SESSION_COOKIE_SECURE"] = IS_PRODUCTION
 
-try:
-    session_auto_complete_hours = int(os.environ.get("SESSION_AUTO_COMPLETE_HOURS", "2"))
-except ValueError:
-    session_auto_complete_hours = 2
-app.config["SESSION_AUTO_COMPLETE_HOURS"] = max(1, session_auto_complete_hours)
-
 if not IS_PRODUCTION:
     app.config["TEMPLATES_AUTO_RELOAD"] = True
     app.config["SEND_FILE_MAX_AGE_DEFAULT"] = 0
@@ -69,7 +63,6 @@ PROFILE_DASHBOARD_MEDIA_MAX_CHARS = 5_800_000
 PROFILE_DASHBOARD_MAX_POST_LIKES = 500
 PRIVATE_DISCUSSION_INVITE_CODE_LENGTH = 8
 PRIVATE_DISCUSSION_INVITE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
-NOTIFICATION_LIST_LIMIT = 20
 DISCUSSION_TOPICS = [
     "General",
     "Programming",
@@ -288,6 +281,47 @@ def add_private_discussion_member(
         """,
         (discussion_id, user_id),
     )
+
+
+def create_notification(
+    db_conn: sqlite3.Connection,
+    user_id: int,
+    message: str,
+    link_path: str = "",
+    event_type: str = "",
+    session_id: int | None = None,
+) -> None:
+    if user_id <= 0:
+        return
+
+    normalized_message = normalize_free_text(message, 280)
+    if not normalized_message:
+        return
+
+    db_conn.execute(
+        """
+        INSERT INTO notifications (user_id, message, link_path, is_read, event_type, session_id)
+        VALUES (?, ?, ?, 0, ?, ?)
+        """,
+        (
+            user_id,
+            normalized_message,
+            normalize_free_text(link_path, 300),
+            normalize_free_text(event_type, 80),
+            session_id,
+        ),
+    )
+
+
+def get_unread_notification_count(user_id: int) -> int:
+    if user_id <= 0:
+        return 0
+
+    row = get_db().execute(
+        "SELECT COUNT(*) FROM notifications WHERE user_id = ? AND is_read = 0",
+        (user_id,),
+    ).fetchone()
+    return int(row[0]) if row else 0
 
 
 def default_profile_dashboard_state() -> dict:
@@ -609,165 +643,19 @@ def load_logged_in_user() -> None:
     g.current_user = get_current_user()
 
 
-def is_static_request() -> bool:
-    return request.endpoint == "static"
-
-
-def get_session_auto_complete_modifier() -> str:
-    return f"+{get_session_auto_complete_hours()} hours"
-
-
-def get_unread_notification_count(db_conn, user_id: int) -> int:
-    row = db_conn.execute(
-        "SELECT COUNT(*) AS total FROM notifications WHERE user_id = ? AND is_read = 0",
-        (user_id,),
-    ).fetchone()
-    return int(row["total"]) if row else 0
-
-
-def fetch_unread_notification_rows(db_conn, user_id: int, limit: int):
-    return db_conn.execute(
-        """
-        SELECT id, message, link_path, event_type, created_at
-        FROM notifications
-        WHERE user_id = ?
-          AND is_read = 0
-        ORDER BY datetime(created_at) DESC, id DESC
-        LIMIT ?
-        """,
-        (user_id, limit),
-    ).fetchall()
-
-
-def serialize_notification_row(
-    row,
-    *,
-    include_created_at: bool,
-) -> dict[str, object]:
-    item: dict[str, object] = {
-        "id": row["id"],
-        "message": row["message"],
-        "link_path": row["link_path"] or "",
-        "event_type": row["event_type"] or "",
-    }
-    if include_created_at:
-        item["created_at"] = row["created_at"]
-    return item
-
-
-@app.before_request
-def queue_session_start_notifications() -> None:
-    if is_static_request():
-        return
-
-    db = get_db()
-    auto_complete_modifier = get_session_auto_complete_modifier()
-    due_sessions = db.execute(
-        """
-        SELECT
-            se.id,
-            se.skill_name,
-            se.learner_id,
-            se.mentor_id,
-            learner.name AS learner_name,
-            mentor.name AS mentor_name
-        FROM sessions se
-        JOIN users learner ON learner.id = se.learner_id
-        JOIN users mentor ON mentor.id = se.mentor_id
-        WHERE se.status = 'scheduled'
-          AND datetime(se.scheduled_for) <= datetime('now', 'localtime')
-          AND datetime(datetime(se.scheduled_for, ?)) > datetime('now', 'localtime')
-        ORDER BY datetime(se.scheduled_for) ASC, se.id ASC
-        LIMIT 80
-        """,
-        (auto_complete_modifier,),
-    ).fetchall()
-    if not due_sessions:
-        return
-
-    for item in due_sessions:
-        session_path = url_for("session_detail", session_id=item["id"])
-        create_user_notification(
-            db,
-            item["mentor_id"],
-            f"Meeting for '{item['skill_name']}' with {item['learner_name']} is starting now.",
-            session_path,
-            event_type="meeting_start",
-            session_id=item["id"],
-        )
-        create_user_notification(
-            db,
-            item["learner_id"],
-            f"Meeting for '{item['skill_name']}' with {item['mentor_name']} is starting now.",
-            session_path,
-            event_type="meeting_start",
-            session_id=item["id"],
-        )
-
-    db.commit()
-
-
-@app.before_request
-def show_unread_notifications() -> None:
-    g.browser_notifications = []
-    g.unread_notifications = []
-    g.unread_notification_count = 0
-
-    if is_static_request() or request.method != "GET":
-        return
-
-    current_user = g.get("current_user")
-    if not current_user:
-        return
-
-    db = get_db()
-    unread_count = get_unread_notification_count(db, current_user["id"])
-    g.unread_notification_count = unread_count
-    if unread_count == 0:
-        return
-
-    unread_notifications = fetch_unread_notification_rows(
-        db,
-        current_user["id"],
-        NOTIFICATION_LIST_LIMIT,
-    )
-    if not unread_notifications:
-        return
-
-    g.unread_notifications = [
-        serialize_notification_row(row, include_created_at=True)
-        for row in unread_notifications
-    ]
-    g.browser_notifications = [
-        serialize_notification_row(row, include_created_at=False)
-        for row in unread_notifications
-    ]
-
-
-def get_session_auto_complete_hours() -> int:
-    raw_value = app.config.get("SESSION_AUTO_COMPLETE_HOURS", 2)
-    try:
-        parsed_value = int(raw_value)
-    except (TypeError, ValueError):
-        return 2
-    return max(1, parsed_value)
-
-
 @app.before_request
 def auto_complete_expired_sessions() -> None:
-    if is_static_request():
+    if request.endpoint == "static":
         return
 
-    auto_complete_modifier = get_session_auto_complete_modifier()
     db = get_db()
     cursor = db.execute(
         """
         UPDATE sessions
         SET status = 'completed'
         WHERE status = 'scheduled'
-          AND datetime(datetime(scheduled_for, ?)) <= datetime('now', 'localtime')
-        """,
-        (auto_complete_modifier,),
+          AND datetime(datetime(scheduled_for, '+2 hours')) <= datetime('now', 'localtime')
+        """
     )
     if cursor.rowcount > 0:
         db.commit()
@@ -794,20 +682,23 @@ def enforce_csrf() -> None:
 
 @app.context_processor
 def inject_template_data() -> dict:
+    current_user = g.get("current_user")
+    unread_notification_count = 0
+    if current_user:
+        unread_notification_count = get_unread_notification_count(current_user["id"])
+
     return {
-        "current_user": g.get("current_user"),
-        "is_admin": user_is_admin(g.get("current_user")),
+        "current_user": current_user,
+        "is_admin": user_is_admin(current_user),
         "skill_levels": SKILL_LEVELS,
         "discussion_topics": DISCUSSION_TOPICS,
         "report_reasons": REPORT_REASONS,
         "video_platforms": VIDEO_PLATFORMS,
         "csrf_token": get_csrf_token(),
+        "notification_unread_count": unread_notification_count,
         "split_tags": split_tags,
         "get_profile_image_url": profile_image_url,
         "static_file_version": static_file_version,
-        "unread_notifications": g.get("unread_notifications", []),
-        "unread_notification_count": g.get("unread_notification_count", 0),
-        "browser_notifications": g.get("browser_notifications", []),
     }
 
 
@@ -1337,35 +1228,6 @@ def parse_session_datetime(raw_value: str) -> datetime | None:
         return None
 
 
-def extract_session_meeting_inputs(form_data) -> dict[str, str]:
-    return {
-        "scheduled_raw": form_data.get("scheduled_for", ""),
-        "notes": normalize_text(form_data.get("notes", "")),
-        "video_platform": normalize_text(form_data.get("video_platform", "")),
-        "meeting_link": normalize_text(form_data.get("meeting_link", "")),
-    }
-
-
-def validate_session_meeting_inputs(
-    session_inputs: dict[str, str],
-) -> tuple[datetime | None, str | None]:
-    video_platform = session_inputs["video_platform"]
-    meeting_link = session_inputs["meeting_link"]
-    scheduled_raw = session_inputs["scheduled_raw"]
-
-    if video_platform not in VIDEO_PLATFORMS:
-        return None, "Please select a valid video platform."
-
-    if not meeting_link:
-        return None, "Meeting link is required for the appointment."
-
-    scheduled_dt = parse_session_datetime(scheduled_raw)
-    if scheduled_dt is None:
-        return None, "Please provide a valid date and time."
-
-    return scheduled_dt, None
-
-
 def get_effective_session_status(
     status: str,
     scheduled_for: str | None,
@@ -1383,43 +1245,13 @@ def get_effective_session_status(
         return normalized_status
 
     current_time = now or datetime.now()
-    if scheduled_dt + timedelta(hours=get_session_auto_complete_hours()) <= current_time:
+    if scheduled_dt + timedelta(hours=2) <= current_time:
         return "completed"
 
     if scheduled_dt <= current_time:
         return "ongoing"
 
     return normalized_status
-
-
-def create_user_notification(
-    db_conn,
-    user_id: int,
-    message: str,
-    link_path: str = "",
-    event_type: str = "",
-    session_id: int | None = None,
-) -> None:
-    normalized_message = normalize_free_text(message, 320)
-    if not normalized_message:
-        return
-
-    normalized_event_type = normalize_free_text(event_type, 40)
-
-    db_conn.execute(
-        """
-        INSERT INTO notifications (user_id, message, link_path, event_type, session_id)
-        VALUES (?, ?, ?, ?, ?)
-        ON CONFLICT DO NOTHING
-        """,
-        (
-            user_id,
-            normalized_message,
-            normalize_free_text(link_path, 260),
-            normalized_event_type,
-            session_id,
-        ),
-    )
 
 
 def has_mentor_skill_conflict(
@@ -1496,45 +1328,6 @@ def has_learner_time_overlap(
     return row is not None
 
 
-def get_session_conflict_message(
-    db_conn,
-    learner_id: int,
-    mentor_id: int,
-    skill_name: str,
-    scheduled_dt: datetime,
-    *,
-    mentor_conflict_message: str,
-    duplicate_conflict_message: str,
-    exclude_session_id: int | None = None,
-) -> str | None:
-    if has_mentor_skill_conflict(
-        db_conn,
-        mentor_id,
-        skill_name,
-        exclude_session_id=exclude_session_id,
-    ):
-        return mentor_conflict_message
-
-    if has_learner_duplicate_session(
-        db_conn,
-        learner_id,
-        mentor_id,
-        skill_name,
-        exclude_session_id=exclude_session_id,
-    ):
-        return duplicate_conflict_message
-
-    if has_learner_time_overlap(
-        db_conn,
-        learner_id,
-        scheduled_dt,
-        exclude_session_id=exclude_session_id,
-    ):
-        return "You already have another session scheduled during this time (sessions are assumed to be 1 hour). Please choose a different time."
-
-    return None
-
-
 @app.route("/sessions/schedule", methods=["POST"])
 @login_required
 def schedule_session():
@@ -1542,12 +1335,18 @@ def schedule_session():
     learner_id = g.current_user["id"]
 
     skill_name = normalize_text(request.form.get("skill_name", ""))
+    notes = normalize_text(request.form.get("notes", ""))
+    video_platform = normalize_text(request.form.get("video_platform", ""))
+    meeting_link = normalize_text(request.form.get("meeting_link", ""))
     mentor_id_raw = request.form.get("mentor_id", "")
-    session_inputs = extract_session_meeting_inputs(request.form)
+    scheduled_raw = request.form.get("scheduled_for", "")
 
-    scheduled_dt, meeting_input_error = validate_session_meeting_inputs(session_inputs)
-    if meeting_input_error:
-        flash(meeting_input_error, "danger")
+    if video_platform not in VIDEO_PLATFORMS:
+        flash("Please select a valid video platform.", "danger")
+        return redirect(request.referrer or url_for("matches"))
+
+    if not meeting_link:
+        flash("Meeting link is required for the appointment.", "danger")
         return redirect(request.referrer or url_for("matches"))
 
     try:
@@ -1565,24 +1364,33 @@ def schedule_session():
         flash("Selected mentor does not exist.", "danger")
         return redirect(request.referrer or url_for("matches"))
 
-    conflict_message = get_session_conflict_message(
-        db,
-        learner_id,
-        mentor_id,
-        skill_name,
-        scheduled_dt,
-        mentor_conflict_message=(
-            f"This mentor already has a scheduled session for '{skill_name}'. Please choose a different skill or wait for the current session to complete/be cancelled."
-        ),
-        duplicate_conflict_message=(
-            f"You already have an active or completed session with this mentor for '{skill_name}'. Please wait until it ends or is cancelled before booking again."
-        ),
-    )
-    if conflict_message:
-        flash(conflict_message, "danger")
+    scheduled_dt = parse_session_datetime(scheduled_raw)
+    if scheduled_dt is None:
+        flash("Please provide a valid date and time.", "danger")
         return redirect(request.referrer or url_for("matches"))
 
-    cursor = db.execute(
+    if has_mentor_skill_conflict(db, mentor_id, skill_name):
+        flash(
+            f"This mentor already has a scheduled session for '{skill_name}'. Please choose a different skill or wait for the current session to complete/be cancelled.",
+            "danger",
+        )
+        return redirect(request.referrer or url_for("matches"))
+
+    if has_learner_duplicate_session(db, learner_id, mentor_id, skill_name):
+        flash(
+            f"You already have an active or completed session with this mentor for '{skill_name}'. Please wait until it ends or is cancelled before booking again.",
+            "danger",
+        )
+        return redirect(request.referrer or url_for("matches"))
+
+    if has_learner_time_overlap(db, learner_id, scheduled_dt):
+        flash(
+            "You already have another session scheduled during this time (sessions are assumed to be 1 hour). Please choose a different time.",
+            "danger",
+        )
+        return redirect(request.referrer or url_for("matches"))
+
+    db.execute(
         """
         INSERT INTO sessions (learner_id, mentor_id, skill_name, scheduled_for, video_platform, meeting_link, notes)
         VALUES (?, ?, ?, ?, ?, ?, ?)
@@ -1592,67 +1400,14 @@ def schedule_session():
             mentor_id,
             skill_name,
             scheduled_dt.strftime("%Y-%m-%d %H:%M"),
-            session_inputs["video_platform"],
-            session_inputs["meeting_link"],
-            session_inputs["notes"],
+            video_platform,
+            meeting_link,
+            notes,
         ),
     )
-
-    session_id = cursor.lastrowid
-    learner_name = g.current_user.get("name", "A learner")
-    scheduled_label = scheduled_dt.strftime("%d %b %Y %I:%M %p")
-    create_user_notification(
-        db,
-        mentor_id,
-        f"{learner_name} scheduled '{skill_name}' on {scheduled_label}.",
-        url_for("session_detail", session_id=session_id),
-        event_type="session_scheduled",
-        session_id=session_id,
-    )
-
     db.commit()
     flash("Session scheduled successfully.", "success")
     return redirect(request.referrer or url_for("profile", user_id=learner_id))
-
-
-@app.route("/notifications/unread")
-@login_required
-def unread_notifications_api():
-    db = get_db()
-    user_id = g.current_user["id"]
-
-    unread_count = get_unread_notification_count(db, user_id)
-    rows = fetch_unread_notification_rows(db, user_id, NOTIFICATION_LIST_LIMIT)
-    notifications = [
-        serialize_notification_row(row, include_created_at=True)
-        for row in rows
-    ]
-
-    return jsonify({"ok": True, "count": unread_count, "items": notifications})
-
-
-@app.route("/notifications/mark-read", methods=["POST"])
-@login_required
-def mark_all_notifications_read():
-    db = get_db()
-    user_id = g.current_user["id"]
-    db.execute(
-        """
-        UPDATE notifications
-        SET is_read = 1,
-            read_at = CURRENT_TIMESTAMP
-        WHERE user_id = ?
-          AND is_read = 0
-        """,
-        (user_id,),
-    )
-    db.commit()
-
-    if request.headers.get("X-Requested-With") == "XMLHttpRequest":
-        return jsonify({"ok": True})
-
-    flash("Notifications marked as read.", "success")
-    return redirect(request.referrer or url_for("home"))
 
 
 @app.route("/sessions/<int:session_id>/status", methods=["POST"])
@@ -1719,28 +1474,59 @@ def edit_session(session_id: int):
         flash("Only scheduled sessions can be edited.", "warning")
         return redirect(url_for("session_detail", session_id=session_id))
 
-    session_inputs = extract_session_meeting_inputs(request.form)
-    scheduled_dt, meeting_input_error = validate_session_meeting_inputs(session_inputs)
-    if meeting_input_error:
-        flash(meeting_input_error, "danger")
+    scheduled_raw = request.form.get("scheduled_for", "")
+    notes = normalize_text(request.form.get("notes", ""))
+    video_platform = normalize_text(request.form.get("video_platform", ""))
+    meeting_link = normalize_text(request.form.get("meeting_link", ""))
+
+    if video_platform not in VIDEO_PLATFORMS:
+        flash("Please select a valid video platform.", "danger")
         return redirect(url_for("session_detail", session_id=session_id))
 
-    conflict_message = get_session_conflict_message(
+    if not meeting_link:
+        flash("Meeting link is required for the appointment.", "danger")
+        return redirect(url_for("session_detail", session_id=session_id))
+
+    scheduled_dt = parse_session_datetime(scheduled_raw)
+    if scheduled_dt is None:
+        flash("Please provide a valid date and time.", "danger")
+        return redirect(url_for("session_detail", session_id=session_id))
+
+    if has_mentor_skill_conflict(
+        db,
+        session_row["mentor_id"],
+        session_row["skill_name"],
+        exclude_session_id=session_id,
+    ):
+        flash(
+            f"This mentor already has another scheduled session for '{session_row['skill_name']}'. Please choose a different time.",
+            "danger",
+        )
+        return redirect(url_for("session_detail", session_id=session_id))
+
+    if has_learner_duplicate_session(
         db,
         session_row["learner_id"],
         session_row["mentor_id"],
         session_row["skill_name"],
-        scheduled_dt,
-        mentor_conflict_message=(
-            f"This mentor already has another scheduled session for '{session_row['skill_name']}'. Please choose a different time."
-        ),
-        duplicate_conflict_message=(
-            f"You already have another active or completed session for '{session_row['skill_name']}' with this mentor."
-        ),
         exclude_session_id=session_id,
-    )
-    if conflict_message:
-        flash(conflict_message, "danger")
+    ):
+        flash(
+            f"You already have another active or completed session for '{session_row['skill_name']}' with this mentor.",
+            "danger",
+        )
+        return redirect(url_for("session_detail", session_id=session_id))
+
+    if has_learner_time_overlap(
+        db,
+        session_row["learner_id"],
+        scheduled_dt,
+        exclude_session_id=session_id,
+    ):
+        flash(
+            "You already have another session scheduled during this time (sessions are assumed to be 1 hour). Please choose a different time.",
+            "danger",
+        )
         return redirect(url_for("session_detail", session_id=session_id))
 
     db.execute(
@@ -1751,9 +1537,9 @@ def edit_session(session_id: int):
         """,
         (
             scheduled_dt.strftime("%Y-%m-%d %H:%M"),
-            session_inputs["video_platform"],
-            session_inputs["meeting_link"],
-            session_inputs["notes"],
+            video_platform,
+            meeting_link,
+            notes,
             session_id,
         ),
     )
@@ -1783,10 +1569,6 @@ def submit_review(session_id: int):
         flash("You cannot review this session.", "danger")
         return redirect(url_for("profile", user_id=g.current_user["id"]))
 
-    if user_id != row["learner_id"]:
-        flash("Only learner can submit a review for this session.", "warning")
-        return redirect(url_for("profile", user_id=g.current_user["id"]))
-
     if row["status"] != "completed":
         flash("Only completed sessions can be reviewed.", "warning")
         return redirect(url_for("profile", user_id=g.current_user["id"]))
@@ -1795,14 +1577,14 @@ def submit_review(session_id: int):
     comment = normalize_text(request.form.get("comment", ""))
     try:
         rating = int(rating_raw)
-    except (TypeError, ValueError):
+    except ValueError:
         flash("Invalid rating value.", "danger")
         return redirect(url_for("profile", user_id=g.current_user["id"]))
     if rating < 1 or rating > 5:
         flash("Rating must be between 1 and 5.", "danger")
         return redirect(url_for("profile", user_id=g.current_user["id"]))
 
-    reviewee_id = row["mentor_id"]
+    reviewee_id = row["mentor_id"] if user_id == row["learner_id"] else row["learner_id"]
 
     db.execute(
         """
@@ -1964,7 +1746,78 @@ def toggle_profile_post_like(user_id: int, post_id: str):
         return {"ok": False, "message": "Profile data is too large. Reduce media size or items."}, 413
 
     save_profile_dashboard_state_for_user(user_id, sanitized_state)
+
+    if liked and viewer_id != user_id:
+        actor_name = normalize_free_text(g.current_user.get("name"), 80, "Someone")
+        db_conn = get_db()
+        create_notification(
+            db_conn=db_conn,
+            user_id=user_id,
+            message=f"{actor_name} liked your post.",
+            link_path=url_for("profile_by_id", user_id=user_id),
+            event_type="profile_post_like",
+        )
+        db_conn.commit()
+
     return {"ok": True, "liked": liked, "likesCount": len(likes_user_ids)}
+
+
+@app.route("/notifications/unread")
+@login_required
+def unread_notifications():
+    user_id = g.current_user["id"]
+    db_conn = get_db()
+
+    rows = db_conn.execute(
+        """
+        SELECT id, message, link_path, is_read, created_at
+        FROM notifications
+        WHERE user_id = ?
+        ORDER BY datetime(created_at) DESC, id DESC
+        LIMIT 20
+        """,
+        (user_id,),
+    ).fetchall()
+
+    notifications = [
+        {
+            "id": row["id"],
+            "message": row["message"],
+            "linkPath": row["link_path"] or "",
+            "isRead": bool(row["is_read"]),
+            "createdAt": row["created_at"] or "",
+        }
+        for row in rows
+    ]
+
+    return {
+        "ok": True,
+        "unreadCount": get_unread_notification_count(user_id),
+        "notifications": notifications,
+    }
+
+
+@app.route("/notifications/mark-read", methods=["POST"])
+@login_required
+def mark_notifications_read():
+    user_id = g.current_user["id"]
+    db_conn = get_db()
+    cursor = db_conn.execute(
+        """
+        UPDATE notifications
+        SET is_read = 1,
+            read_at = CURRENT_TIMESTAMP
+        WHERE user_id = ? AND is_read = 0
+        """,
+        (user_id,),
+    )
+    db_conn.commit()
+
+    return {
+        "ok": True,
+        "markedRead": max(cursor.rowcount, 0),
+        "unreadCount": 0,
+    }
 
 
 @app.route("/media/profile/<path:filename>")

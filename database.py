@@ -131,6 +131,37 @@ def ensure_schema_updates() -> None:
 
     db_conn.execute(
         """
+        CREATE TABLE IF NOT EXISTS notifications (
+            id INTEGER PRIMARY KEY,
+            user_id INTEGER NOT NULL,
+            message TEXT NOT NULL,
+            link_path TEXT DEFAULT '',
+            is_read INTEGER NOT NULL DEFAULT 0,
+            event_type TEXT DEFAULT '',
+            session_id INTEGER,
+            created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+            read_at TEXT,
+            FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE,
+            FOREIGN KEY(session_id) REFERENCES sessions(id) ON DELETE SET NULL
+        )
+        """
+    )
+    db_conn.execute(
+        """
+        CREATE INDEX IF NOT EXISTS idx_notifications_user_status
+        ON notifications(user_id, is_read, created_at)
+        """
+    )
+    db_conn.execute(
+        """
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_notifications_user_event_session
+        ON notifications(user_id, event_type, session_id)
+        WHERE session_id IS NOT NULL AND TRIM(COALESCE(event_type, '')) != ''
+        """
+    )
+
+    db_conn.execute(
+        """
         CREATE TABLE IF NOT EXISTS private_discussions (
             id INTEGER PRIMARY KEY,
             owner_id INTEGER NOT NULL,
@@ -182,50 +213,6 @@ def ensure_schema_updates() -> None:
         """
         CREATE INDEX IF NOT EXISTS idx_private_discussion_messages_discussion
         ON private_discussion_messages(discussion_id, created_at ASC)
-        """
-    )
-    db_conn.execute(
-        """
-        CREATE TABLE IF NOT EXISTS notifications (
-            id INTEGER PRIMARY KEY,
-            user_id INTEGER NOT NULL,
-            message TEXT NOT NULL,
-            link_path TEXT DEFAULT '',
-            is_read INTEGER NOT NULL DEFAULT 0,
-            event_type TEXT DEFAULT '',
-            session_id INTEGER,
-            created_at TEXT DEFAULT CURRENT_TIMESTAMP,
-            read_at TEXT,
-            FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE,
-            FOREIGN KEY(session_id) REFERENCES sessions(id) ON DELETE SET NULL
-        )
-        """
-    )
-
-    notification_columns = get_table_columns(db_conn, "notifications")
-    if "link_path" not in notification_columns:
-        db_conn.execute("ALTER TABLE notifications ADD COLUMN link_path TEXT DEFAULT ''")
-    if "is_read" not in notification_columns:
-        db_conn.execute("ALTER TABLE notifications ADD COLUMN is_read INTEGER NOT NULL DEFAULT 0")
-    if "event_type" not in notification_columns:
-        db_conn.execute("ALTER TABLE notifications ADD COLUMN event_type TEXT DEFAULT ''")
-    if "session_id" not in notification_columns:
-        db_conn.execute("ALTER TABLE notifications ADD COLUMN session_id INTEGER")
-    if "read_at" not in notification_columns:
-        db_conn.execute("ALTER TABLE notifications ADD COLUMN read_at TEXT")
-
-    db_conn.execute(
-        """
-        CREATE INDEX IF NOT EXISTS idx_notifications_user_status
-        ON notifications(user_id, is_read, created_at DESC)
-        """
-    )
-    db_conn.execute(
-        """
-        CREATE UNIQUE INDEX IF NOT EXISTS idx_notifications_user_event_session
-        ON notifications(user_id, event_type, session_id)
-        WHERE session_id IS NOT NULL
-          AND TRIM(COALESCE(event_type, '')) != ''
         """
     )
     db_conn.execute(

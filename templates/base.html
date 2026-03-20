@@ -26,36 +26,23 @@
                 <a href="{{ url_for('admin_reports') }}">Moderation</a>
                 {% endif %}
                 <a href="{{ url_for('matches') }}">Matches</a>
-                <div class="nav-notify-wrap">
-                    <button class="nav-notify-icon" aria-label="Open notifications" type="button">
-                        <span class="nav-notify-glyph" aria-hidden="true">🔔</span>
-                        <span
-                            class="nav-notify-badge{% if unread_notification_count == 0 %} hidden{% endif %}"
-                            data-notify-count
-                        >{{ unread_notification_count }}</span>
+                <div class="nav-notification-wrap">
+                    <button
+                        class="nav-notification-btn"
+                        type="button"
+                        aria-label="Open notifications"
+                        aria-expanded="false"
+                    >
+                        <span class="nav-notification-icon" aria-hidden="true">🔔</span>
+                        <span class="nav-notification-badge" {% if notification_unread_count < 1 %}hidden{% endif %}>{{ notification_unread_count }}</span>
                     </button>
-                    <div class="nav-notify-dropdown">
-                        <div class="nav-notify-header">
+                    <div class="nav-notification-dropdown">
+                        <div class="nav-notification-header">
                             <strong>Notifications</strong>
-                            <form method="post" action="{{ url_for('mark_all_notifications_read') }}" class="nav-notify-mark-form">
-                                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-                                <button class="btn btn-small btn-outline nav-notify-mark-btn" type="submit">Mark all read</button>
-                            </form>
+                            <button id="markNotificationsReadBtn" class="btn btn-outline btn-small" type="button">Mark all read</button>
                         </div>
-                        <div class="nav-notify-list" data-notify-list>
-                            {% for notification in unread_notifications %}
-                            <a
-                                class="nav-notify-item"
-                                href="{{ notification.link_path if notification.link_path else url_for('profile_by_id', user_id=current_user.id) }}"
-                                data-notify-id="{{ notification.id }}"
-                                data-notify-event="{{ notification.event_type }}"
-                            >
-                                <span>{{ notification.message }}</span>
-                                <span class="small-muted">{{ notification.created_at }}</span>
-                            </a>
-                            {% else %}
-                            <p class="small-muted nav-notify-empty">No unread notifications.</p>
-                            {% endfor %}
+                        <div id="navNotificationList" class="nav-notification-list">
+                            <p class="small-muted nav-notification-empty">No notifications yet.</p>
                         </div>
                     </div>
                 </div>
@@ -101,7 +88,7 @@
         {% block content %}{% endblock %}
     </main>
 
-    {% set flow_cta_hidden_endpoints = ['login', 'register', 'home', 'become_mentor', 'learn_skill', 'community'] %}
+    {% set flow_cta_hidden_endpoints = ['login', 'register', 'home', 'become_mentor', 'learn_skill'] %}
     {% if request.endpoint not in flow_cta_hidden_endpoints %}
     <section class="section section-tight flow-global-cta-wrap">
         <div class="container">
@@ -187,33 +174,170 @@
     })();
     </script>
     <script>
-    (function () {
-        const wraps = document.querySelectorAll('.nav-profile-wrap, .nav-notify-wrap');
-        if (!wraps.length) {
+    (() => {
+        const wrap = document.querySelector('.nav-notification-wrap');
+        if (!wrap) {
             return;
         }
 
-        wraps.forEach((wrap) => {
-            const button = wrap.querySelector('.nav-profile-icon, .nav-notify-icon');
-            if (!button) {
+        const button = wrap.querySelector('.nav-notification-btn');
+        const dropdown = wrap.querySelector('.nav-notification-dropdown');
+        const notificationList = wrap.querySelector('#navNotificationList');
+        const markReadButton = wrap.querySelector('#markNotificationsReadBtn');
+        const badge = wrap.querySelector('.nav-notification-badge');
+        const csrfToken = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '';
+
+        const updateBadge = (count) => {
+            if (!badge) {
                 return;
             }
 
+            const normalizedCount = Math.max(0, Number(count) || 0);
+            badge.textContent = String(normalizedCount);
+            if (normalizedCount > 0) {
+                badge.removeAttribute('hidden');
+            } else {
+                badge.setAttribute('hidden', 'hidden');
+            }
+        };
+
+        const formatTime = (rawValue) => {
+            if (!rawValue) {
+                return '';
+            }
+            const parsedDate = new Date(rawValue);
+            if (Number.isNaN(parsedDate.getTime())) {
+                return rawValue;
+            }
+            return parsedDate.toLocaleString([], {
+                month: 'short',
+                day: 'numeric',
+                hour: '2-digit',
+                minute: '2-digit',
+            });
+        };
+
+        const renderNotifications = (items) => {
+            if (!notificationList) {
+                return;
+            }
+
+            notificationList.innerHTML = '';
+            if (!Array.isArray(items) || !items.length) {
+                const empty = document.createElement('p');
+                empty.className = 'small-muted nav-notification-empty';
+                empty.textContent = 'No notifications yet.';
+                notificationList.appendChild(empty);
+                return;
+            }
+
+            items.forEach((item) => {
+                const elementTag = item.linkPath ? 'a' : 'div';
+                const itemElement = document.createElement(elementTag);
+                itemElement.className = `nav-notification-item${item.isRead ? '' : ' is-unread'}`;
+                if (elementTag === 'a') {
+                    itemElement.href = item.linkPath;
+                }
+
+                const message = document.createElement('p');
+                message.className = 'nav-notification-message';
+                message.textContent = item.message || 'New notification';
+
+                const timestamp = document.createElement('span');
+                timestamp.className = 'small-muted nav-notification-time';
+                timestamp.textContent = formatTime(item.createdAt || '');
+
+                itemElement.appendChild(message);
+                itemElement.appendChild(timestamp);
+                notificationList.appendChild(itemElement);
+            });
+        };
+
+        const fetchNotifications = async () => {
+            try {
+                const response = await fetch('/notifications/unread', {
+                    headers: {
+                        Accept: 'application/json',
+                    },
+                });
+                const result = await response.json().catch(() => ({}));
+                if (!response.ok || !result.ok) {
+                    return;
+                }
+
+                updateBadge(result.unreadCount || 0);
+                renderNotifications(result.notifications || []);
+            } catch (_error) {
+                return;
+            }
+        };
+
+        const markAllRead = async () => {
+            try {
+                const response = await fetch('/notifications/mark-read', {
+                    method: 'POST',
+                    headers: {
+                        'X-CSRF-Token': csrfToken,
+                    },
+                });
+                const result = await response.json().catch(() => ({}));
+                if (!response.ok || !result.ok) {
+                    return;
+                }
+                updateBadge(result.unreadCount || 0);
+                await fetchNotifications();
+            } catch (_error) {
+                return;
+            }
+        };
+
+        if (button) {
             button.addEventListener('click', (event) => {
                 event.stopPropagation();
-                wraps.forEach((otherWrap) => {
-                    if (otherWrap !== wrap) {
-                        otherWrap.classList.remove('open');
-                    }
-                });
+                const willOpen = !wrap.classList.contains('open');
                 wrap.classList.toggle('open');
+                button.setAttribute('aria-expanded', willOpen ? 'true' : 'false');
+                if (willOpen) {
+                    fetchNotifications();
+                }
             });
-        });
+        }
+
+        if (dropdown) {
+            dropdown.addEventListener('click', (event) => {
+                event.stopPropagation();
+            });
+        }
+
+        if (markReadButton) {
+            markReadButton.addEventListener('click', () => {
+                markAllRead();
+            });
+        }
 
         document.addEventListener('click', () => {
-            wraps.forEach((wrap) => {
-                wrap.classList.remove('open');
-            });
+            wrap.classList.remove('open');
+            if (button) {
+                button.setAttribute('aria-expanded', 'false');
+            }
+        });
+
+        fetchNotifications();
+        window.setInterval(fetchNotifications, 30000);
+    })();
+    </script>
+    <script>
+    // Profile icon dropdown toggle for touch/click
+    (function () {
+        const wrap = document.querySelector('.nav-profile-wrap');
+        if (!wrap) return;
+        const btn = wrap.querySelector('.nav-profile-icon');
+        btn.addEventListener('click', function (e) {
+            e.stopPropagation();
+            wrap.classList.toggle('open');
+        });
+        document.addEventListener('click', function () {
+            wrap.classList.remove('open');
         });
     })();
     </script>
@@ -295,242 +419,6 @@
         renderParticles();
         window.addEventListener('load', rebuildParticles, { once: true });
         window.addEventListener('resize', rebuildParticles, { passive: true });
-    })();
-    </script>
-    <script>
-    (() => {
-        const isLoggedIn = {{ 'true' if current_user else 'false' }};
-        if (!isLoggedIn) {
-            return;
-        }
-
-        const notificationsApiUrl = "{{ url_for('unread_notifications_api') }}";
-        const markReadUrl = "{{ url_for('mark_all_notifications_read') }}";
-        const initialNotifications = {{ browser_notifications | tojson }};
-        const iconUrl = "{{ url_for('static', filename='media/images/url_logo.png') }}";
-        const csrfToken = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '';
-        const badge = document.querySelector('[data-notify-count]');
-        const list = document.querySelector('[data-notify-list]');
-        const markReadForm = document.querySelector('.nav-notify-mark-form');
-        const seenStorageKey = 'skilllink.notificationSeenIds';
-
-        const parseSeenNotificationIds = () => {
-            try {
-                const rawValue = localStorage.getItem(seenStorageKey);
-                if (!rawValue) {
-                    return new Set();
-                }
-                const parsed = JSON.parse(rawValue);
-                if (!Array.isArray(parsed)) {
-                    return new Set();
-                }
-                return new Set(parsed.map((item) => Number(item)).filter((item) => Number.isFinite(item)));
-            } catch (_error) {
-                return new Set();
-            }
-        };
-
-        const seenNotificationIds = parseSeenNotificationIds();
-        const saveSeenNotificationIds = () => {
-            const ids = [...seenNotificationIds].slice(-150);
-            localStorage.setItem(seenStorageKey, JSON.stringify(ids));
-        };
-
-        const updateBadge = (count) => {
-            if (!badge) {
-                return;
-            }
-
-            const normalizedCount = Math.max(0, Number(count) || 0);
-            badge.textContent = String(normalizedCount);
-            badge.classList.toggle('hidden', normalizedCount === 0);
-        };
-
-        const playMeetingAlarmTone = () => {
-            if (!('AudioContext' in window || 'webkitAudioContext' in window)) {
-                return;
-            }
-
-            const AudioCtx = window.AudioContext || window.webkitAudioContext;
-            const context = new AudioCtx();
-
-            const playBeep = (startAt) => {
-                const oscillator = context.createOscillator();
-                const gainNode = context.createGain();
-                oscillator.type = 'sine';
-                oscillator.frequency.value = 880;
-                gainNode.gain.setValueAtTime(0.0001, startAt);
-                gainNode.gain.exponentialRampToValueAtTime(0.16, startAt + 0.02);
-                gainNode.gain.exponentialRampToValueAtTime(0.0001, startAt + 0.24);
-                oscillator.connect(gainNode);
-                gainNode.connect(context.destination);
-                oscillator.start(startAt);
-                oscillator.stop(startAt + 0.25);
-            };
-
-            const now = context.currentTime;
-            playBeep(now + 0.02);
-            playBeep(now + 0.34);
-            playBeep(now + 0.66);
-
-            window.setTimeout(() => {
-                context.close().catch(() => {
-                    return;
-                });
-            }, 1300);
-        };
-
-        const renderNotificationList = (items) => {
-            if (!list) {
-                return;
-            }
-
-            list.replaceChildren();
-            if (!Array.isArray(items) || !items.length) {
-                const emptyElement = document.createElement('p');
-                emptyElement.className = 'small-muted nav-notify-empty';
-                emptyElement.textContent = 'No unread notifications.';
-                list.appendChild(emptyElement);
-                return;
-            }
-
-            items.forEach((item) => {
-                const linkPath = item.link_path ? String(item.link_path) : "{{ url_for('profile_by_id', user_id=current_user.id) if current_user else '/' }}";
-
-                const anchor = document.createElement('a');
-                anchor.className = 'nav-notify-item';
-                anchor.href = linkPath;
-                anchor.dataset.notifyId = String(item.id || '');
-                anchor.dataset.notifyEvent = String(item.event_type || '');
-
-                const title = document.createElement('span');
-                title.textContent = String(item.message || 'Notification');
-                anchor.appendChild(title);
-
-                const time = document.createElement('span');
-                time.className = 'small-muted';
-                time.textContent = String(item.created_at || '');
-                anchor.appendChild(time);
-
-                list.appendChild(anchor);
-            });
-        };
-
-        const pushDesktopNotifications = (items) => {
-            if (!('Notification' in window)) {
-                return;
-            }
-
-            const notifyItems = Array.isArray(items)
-                ? items.filter((item) => Number.isFinite(Number(item.id)) && !seenNotificationIds.has(Number(item.id)))
-                : [];
-            if (!notifyItems.length) {
-                return;
-            }
-
-            const showNotifications = () => {
-                notifyItems.forEach((item, index) => {
-                    const notificationId = Number(item.id);
-                    seenNotificationIds.add(notificationId);
-
-                    const message = item.message ? String(item.message) : 'You have a new notification.';
-                    const linkPath = item.link_path ? String(item.link_path) : '';
-                    const eventType = item.event_type ? String(item.event_type) : '';
-
-                    try {
-                        const browserNotification = new Notification('SkillLink', {
-                            body: message,
-                            icon: iconUrl,
-                            tag: `skilllink-notify-${notificationId}-${index}`,
-                        });
-
-                        if (linkPath) {
-                            browserNotification.onclick = () => {
-                                window.focus();
-                                window.location.href = linkPath;
-                                browserNotification.close();
-                            };
-                        }
-                    } catch (_error) {
-                        return;
-                    }
-
-                    if (eventType === 'meeting_start') {
-                        playMeetingAlarmTone();
-                    }
-                });
-                saveSeenNotificationIds();
-            };
-
-            if (Notification.permission === 'granted') {
-                showNotifications();
-                return;
-            }
-
-            if (Notification.permission === 'default') {
-                Notification.requestPermission().then((permission) => {
-                    if (permission === 'granted') {
-                        showNotifications();
-                    }
-                }).catch(() => {
-                    return;
-                });
-            }
-        };
-
-        const refreshNotifications = async () => {
-            try {
-                const response = await fetch(notificationsApiUrl, {
-                    headers: {
-                        'X-Requested-With': 'XMLHttpRequest',
-                    },
-                    credentials: 'same-origin',
-                });
-                if (!response.ok) {
-                    return;
-                }
-
-                const result = await response.json().catch(() => ({}));
-                if (!result.ok) {
-                    return;
-                }
-
-                const items = Array.isArray(result.items) ? result.items : [];
-                updateBadge(Number(result.count || items.length));
-                renderNotificationList(items);
-                pushDesktopNotifications(items);
-            } catch (_error) {
-                return;
-            }
-        };
-
-        if (markReadForm) {
-            markReadForm.addEventListener('submit', async (event) => {
-                event.preventDefault();
-                try {
-                    const response = await fetch(markReadUrl, {
-                        method: 'POST',
-                        headers: {
-                            'X-CSRF-Token': csrfToken,
-                            'X-Requested-With': 'XMLHttpRequest',
-                        },
-                        credentials: 'same-origin',
-                    });
-                    if (!response.ok) {
-                        return;
-                    }
-                    await refreshNotifications();
-                } catch (_error) {
-                    return;
-                }
-            });
-        }
-
-        renderNotificationList(initialNotifications);
-        updateBadge({{ unread_notification_count }});
-        pushDesktopNotifications(initialNotifications);
-        window.setInterval(refreshNotifications, 30000);
-        refreshNotifications();
     })();
     </script>
     <script>
