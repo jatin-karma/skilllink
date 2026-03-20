@@ -13,6 +13,10 @@
 
 <section class="section section-tight">
     <div class="container session-chat-grid">
+        {% set is_session_mentor = current_user and current_user.id == session_item.mentor_id %}
+        {% set can_edit_scheduled_session = current_user and session_item.status == 'scheduled' and (current_user.id == session_item.mentor_id or current_user.id == session_item.learner_id) %}
+        {% set can_manage_active_session = current_user and session_item.status in ['scheduled', 'ongoing'] and (current_user.id == session_item.mentor_id or current_user.id == session_item.learner_id) %}
+
         <article class="panel">
             <h3>Appointment Details</h3>
             <p><strong>Date & Time:</strong> {{ session_item.scheduled_for }}</p>
@@ -32,7 +36,35 @@
             <p><strong>Notes:</strong> {{ session_item.notes }}</p>
             {% endif %}
 
-            {% if current_user and current_user.id == session_item.mentor_id and session_item.status == 'scheduled' %}
+            {% if can_edit_scheduled_session %}
+            <h4 id="edit-session">Edit Session</h4>
+            <form class="stack-form" method="post" action="{{ url_for('edit_session', session_id=session_item.id) }}">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                <div class="form-group">
+                    <label for="edit-scheduled-for">Date & Time</label>
+                    <input id="edit-scheduled-for" name="scheduled_for" type="datetime-local" value="{{ (session_item.scheduled_for or '') | replace(' ', 'T') }}" required>
+                </div>
+                <div class="form-group">
+                    <label for="edit-video-platform">Video Platform</label>
+                    <select id="edit-video-platform" name="video_platform" required>
+                        {% for platform in video_platforms %}
+                        <option value="{{ platform }}" {% if session_item.video_platform == platform %}selected{% endif %}>{{ platform }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label for="edit-meeting-link">Meeting Link</label>
+                    <input id="edit-meeting-link" name="meeting_link" type="url" value="{{ session_item.meeting_link or '' }}" required>
+                </div>
+                <div class="form-group">
+                    <label for="edit-notes">Session Notes</label>
+                    <textarea id="edit-notes" name="notes" rows="3" placeholder="What should be prepared for this session?">{{ session_item.notes or '' }}</textarea>
+                </div>
+                <button type="submit" class="btn btn-small btn-primary">Save Changes</button>
+            </form>
+            {% endif %}
+
+            {% if is_session_mentor and session_item.status in ['scheduled', 'ongoing'] %}
             <form method="post" action="{{ url_for('update_session_status', session_id=session_item.id) }}" style="display: inline;">
                 <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
                 <input type="hidden" name="status" value="completed">
@@ -40,7 +72,7 @@
             </form>
             {% endif %}
 
-            {% if current_user and session_item.status == 'scheduled' and (current_user.id == session_item.mentor_id or current_user.id == session_item.learner_id) %}
+            {% if can_manage_active_session %}
             <form method="post" action="{{ url_for('update_session_status', session_id=session_item.id) }}" style="display: inline;">
                 <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
                 <input type="hidden" name="status" value="cancelled">

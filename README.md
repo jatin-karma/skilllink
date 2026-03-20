@@ -1,219 +1,231 @@
-# SkillLink — Peer-to-Peer Skill Exchange
+# SkillLink
 
-A Flask web application where students teach what they know and learn what they need through peer-to-peer sessions.
+A peer-to-peer learning platform where students teach what they know and learn what they need through scheduled sessions.
 
----
+## What this project does
 
-## Overview
+SkillLink helps students:
+- Add **teach** and **learn** skills
+- Find matching mentors
+- Schedule video sessions
+- Chat inside each session
+- Give post-session reviews (learner → mentor)
+- Join discussion forums and community activity feeds
 
-SkillLink connects students as mentors and learners. Users add the skills they can teach or want to learn, get auto-matched with peers, schedule live sessions, and build a verified community profile through reviews and ratings.
-
----
-
-## Tech Stack
-
-| Layer | Technology |
-|---|---|
-| Backend | Python 3.13+, Flask 3.1 |
-| ORM / DB | Flask-SQLAlchemy 3.1, SQLite |
-| Templates | Jinja2 |
-| Frontend | Vanilla JS, custom CSS (no frameworks) |
-| Auth | Session-based with CSRF protection |
+It also includes moderation tools and notification workflows for session activity.
 
 ---
 
-## Project Structure
+## Tech stack
 
-```
-app.py               # Flask app, all routes, auth, sanitization
-database.py          # SQLite helpers, schema migrations, seed data
-models.py            # SQLAlchemy table models and indexes
-extensions.py        # SQLAlchemy extension instance
-query_services.py    # Extracted query logic (skills / matches / profile)
-requirements.txt     # Pinned Python dependencies
-templates/           # Jinja2 HTML templates
-  base.html            # Shared layout, navbar, footer, scripts
-  index.html           # Homepage
-  become_mentor.html   # Become a Mentor page
-  learn_skill.html     # Learn New Skill / browse & book page
-  profile.html         # User profile view
-  edit_profile.html    # Profile edit page
-  skills.html          # Full skill search (legacy /skills route)
-  matches.html         # Recommended mentor matches
-  discuss.html         # Discussion board list
-  discuss_new.html     # New discussion post
-  discuss_post.html    # Discussion thread view
-  session_detail.html  # Session detail + messaging
-  admin_reports.html   # Admin moderation queue
-  login.html           # Sign-in page
-  register.html        # Registration page
+- **Backend:** Python, Flask
+- **Database:** SQLite + Flask-SQLAlchemy
+- **Frontend:** Jinja templates, Vanilla JS, custom CSS
+- **Auth:** Session-based login with CSRF protection
+
+---
+
+## Key features
+
+### 1) Authentication & profile
+- Register / login / logout
+- Profile edit and dashboard state save
+- Profile image upload and protected media serving
+
+### 2) Skills & matching
+- Add/delete teach or learn skills
+- Browse skills with filters
+- Auto match learner interests to mentor skills
+- Self-listings are excluded from learn/mentor listing views
+
+### 3) Session scheduling lifecycle
+- Book a session with date/time, platform, and meeting link
+- Session status progression:
+  - `scheduled`
+  - `ongoing` (once scheduled time starts)
+  - `completed` (manual by mentor or auto after configured duration)
+  - `cancelled`
+- Session edit allowed only while still effectively scheduled
+
+### 4) Session chat
+- Per-session conversation thread
+- Unread message counts in session actions
+
+### 5) Reviews
+- Reviews are allowed only for completed sessions
+- **Learner-only review submission**
+- 5-star interactive rating UI in profile session table
+- Review updates are upserted per session/reviewer
+
+### 6) Notifications
+- Navbar bell icon with unread count
+- Notification dropdown + mark-all-read action
+- API endpoints for polling unread notifications
+- Chrome desktop notifications (after permission)
+- Meeting-start browser alarm tone for `meeting_start` notification events
+- Session scheduling creates mentor notification
+
+### 7) Discussion & moderation
+- Public discussion board with topics/tags
+- Replies on posts
+- Report posts/replies
+- Admin moderation queue and moderation actions
+- Private discussion rooms with invite code/link
+
+---
+
+## Project structure
+
+```text
+app.py
+models.py
+database.py
+query_services.py
+extensions.py
+requirements.txt
+README.md
+
+templates/
+  base.html
+  index.html
+  become_mentor.html
+  learn_skill.html
+  skills.html
+  matches.html
+  profile.html
+  edit_profile.html
+  session_detail.html
+  discuss.html
+  discuss_new.html
+  discuss_post.html
+  community.html
+  private_discussions.html
+  private_discussion_room.html
+  admin_reports.html
+  login.html
+  register.html
+
 static/
-  css/style.css        # Global stylesheet
-  media/images/        # Logos, banners, skill thumbnails
-  media/videos/        # Hero background videos
+  css/style.css
+  media/images/
+  media/videos/
+
 uploads/
-  profile_pics/        # User-uploaded profile pictures (git-ignored)
+  profile_pics/
 ```
 
 ---
 
-## Features
-
-### Navigation
-- **Become a Mentor** page — how-to steps, benefits, active mentor showcase
-- **Learn New Skill** page — searchable skill cards with book-session forms
-- **Discuss** — community discussion board
-- Auto-hiding sticky navbar with profile avatar dropdown
-
-### Authentication & Profile
-- Register / login / logout with hashed passwords
-- Dedicated **Edit Profile** page (`/profile/edit`)
-  - Name, bio, profile picture upload/remove (JPG/PNG/GIF/WEBP, max 4 MB)
-  - Kicker label, headline, about, banner image
-  - Social links: LinkedIn, GitHub, Portfolio
-  - Education details persisted server-side
-- Profile dashboard state (education, certificates, projects, posts, XP) saved in SQLite via `/profile/dashboard/state`
-- Banner image compressed client-side before upload to stay within payload limits
-- Profile image served via login-protected route `/media/profile/<filename>`
-
-### Skills & Matching
-- Add teach / learn skills (name, category, level)
-- Search and filter by text, category, level, and minimum rating
-- Auto-matching: learner's "learn" skills matched against mentor "teach" skills
-
-### Sessions
-- Book sessions directly from skill cards (date/time, video platform, meeting link)
-- Session status lifecycle: scheduled → completed / cancelled
-- In-session messaging with unread indicator
-- Post-session reviews and star ratings
-
-### Discussion & Moderation
-- Create discussion posts with topic tags
-- Threaded replies
-- Report posts/replies (spam, abuse, harassment, etc.)
-- Admin-only moderation queue at `/admin/reports`
-
-### Security
-- CSRF token on every state-changing form and fetch request
-- Secure cookie flags (`HttpOnly`, `SameSite=Lax`, `Secure` in production)
-- File upload validation: extension allowlist + binary magic-byte check
-- `SECRET_KEY` read from environment variable; app refuses to start in production with the default value
-- No-cache headers on all HTML responses during development
-- XSS-safe: all user content rendered via Jinja2 auto-escaping; data URLs allowlisted before storage
-
----
-
-## Local Setup (Windows PowerShell)
+## Local setup (Windows PowerShell)
 
 ```powershell
-# 1. Clone / open the project folder
 cd d:\Peertopeer
 
-# 2. Create and activate virtual environment
 python -m venv .venv
 .\.venv\Scripts\Activate.ps1
 
-# 3. Install dependencies
 pip install -r requirements.txt
 
-# 4. Run the development server
 python app.py
-
-# 5. Open in browser
-#    http://127.0.0.1:5000/
 ```
+
+Open:
+- `http://127.0.0.1:5000/`
 
 ---
 
-## Environment Variables
+## Environment variables
 
 | Variable | Required | Description |
 |---|---|---|
-| `FLASK_SECRET_KEY` | **Yes (production)** | Secret key for sessions. App refuses to start in prod with the default. |
-| `FLASK_ENV` | No | Set to `production` to enable secure cookie flags. |
-| `FLASK_DEBUG` | No | Set to `1` to enable debug mode locally. |
+| `FLASK_SECRET_KEY` | Required in production | Session secret key |
+| `FLASK_ENV` | Optional | Set `production` for production behavior |
+| `FLASK_DEBUG` | Optional | Set `1` for debug mode locally |
+| `SESSION_AUTO_COMPLETE_HOURS` | Optional | Auto-complete timeout for sessions (default: `2`, min: `1`) |
 
 ---
 
-## Seeded Demo Users
+## Notification behavior notes
 
-On first run with an empty database, demo data is inserted automatically.  
-All demo users use password: **`password123`**
-
-| Email | Role |
-|---|---|
-| `jatin@example.com` | Admin |
-| `riya@example.com` | User |
-| `arjun@example.com` | User |
+- Desktop/browser notifications require user permission in Chrome.
+- Current implementation uses polling from the open web app (every ~30 seconds).
+- If the app tab is closed, browser popups do not fire in the current non-service-worker setup.
 
 ---
 
-## Route Reference
+## Seed users (first run)
 
-| Route | Description |
-|---|---|
-| `GET /` | Homepage |
-| `GET /become-mentor` | Become a Mentor landing page |
-| `GET /learn` | Learn New Skill (browse & book) |
-| `GET /skills` | Legacy full skill search |
-| `GET /community` | Community feed for profile activity posts |
-| `GET /matches` | Recommended mentor matches (login required) |
-| `GET/POST /register` | Registration |
-| `GET/POST /login` | Login |
-| `GET /logout` | Logout |
-| `GET /profile/<id>` | View user profile |
-| `GET /profile/edit` | Edit own profile (login required) |
-| `POST /profile/basic` | Update name/bio |
-| `POST /profile/dashboard/state` | Save dashboard JSON state |
-| `POST /profile/<id>/posts/<post_id>/like` | Toggle like on a profile activity post |
-| `POST /profile/picture` | Upload profile picture |
-| `POST /profile/picture/remove` | Remove profile picture |
-| `GET /media/profile/<filename>` | Serve profile picture (login required) |
-| `POST /skills/add` | Add a skill |
-| `POST /skills/<id>/delete` | Delete a skill |
-| `POST /sessions/schedule` | Book a session |
-| `GET /sessions/<id>` | Session detail + messages |
-| `POST /sessions/<id>/status` | Update session status |
-| `POST /sessions/<id>/review` | Submit a review |
-| `POST /sessions/<id>/messages` | Send a session message |
-| `GET /discuss` | Discussion board |
-| `GET/POST /discuss/private` | Private discussions (create/list joined rooms) |
-| `POST /discuss/private/join` | Join private discussion using invite code |
-| `GET /discuss/private/join/<code>` | Join private discussion using invite link |
-| `GET /discuss/private/<id>` | Private discussion room |
-| `POST /discuss/private/<id>/messages` | Send message in private discussion room |
-| `GET/POST /discuss/new` | Create a post |
-| `GET /discuss/<id>` | View a post + replies |
-| `POST /discuss/<id>/reply` | Add a reply |
-| `POST /discuss/report` | Report a post/reply |
-| `GET /admin/reports` | Admin moderation queue |
-| `POST /admin/reports/<id>/action` | Moderate a report |
+On first run with an empty DB, sample users are created.
 
+Password for all seeded users:
+- `password123`
 
-## Notes
-- Database tables are created automatically at startup.
-- Lightweight schema updates run automatically for existing DB files.
-- Keep project-owned media files in `static/media/images` or `static/media/videos`, not in the project root.
-- Uploaded profile images are stored in `uploads/profile_pics/` and served through `/media/profile/<filename>` for authenticated users.
+Users:
+- `jatin@example.com` (admin)
+- `riya@example.com`
+- `arjun@example.com`
 
 ---
 
-## Git Workflow (Avoid Nested Duplicate Folder)
+## Core routes (quick reference)
 
-- Keep this project as a single repo at `d:\Peertopeer`.
-- Do not run `git clone ...` inside `d:\Peertopeer`.
-- To update code, use pull in the same folder:
+### Auth / profile
+- `GET,POST /register`
+- `GET,POST /login`
+- `GET /logout`
+- `GET /profile/<user_id>`
+- `GET /profile/edit`
+- `POST /profile/basic`
+- `POST /profile/dashboard/state`
+- `POST /profile/picture`
+- `POST /profile/picture/remove`
+- `GET /media/profile/<filename>`
 
-```powershell
-cd d:\Peertopeer
-git pull origin master
-```
+### Skills / sessions
+- `GET /skills`
+- `GET /become-mentor`
+- `GET /learn`
+- `GET /matches`
+- `POST /skills/add`
+- `POST /skills/<skill_id>/delete`
+- `POST /sessions/schedule`
+- `GET /sessions/<session_id>`
+- `POST /sessions/<session_id>/edit`
+- `POST /sessions/<session_id>/status`
+- `POST /sessions/<session_id>/messages`
+- `POST /sessions/<session_id>/review`
 
-- To publish changes:
+### Notifications
+- `GET /notifications/unread`
+- `POST /notifications/mark-read`
 
-```powershell
-cd d:\Peertopeer
-git add .
-git commit -m "your message"
-git push origin master
-```
+### Community / discussion
+- `GET /community`
+- `GET /discuss`
+- `GET,POST /discuss/new`
+- `GET /discuss/<post_id>`
+- `POST /discuss/<post_id>/reply`
+- `POST /discuss/<post_id>/report`
+- `POST /discuss/<post_id>/replies/<reply_id>/report`
+- `POST /discuss/<post_id>/delete`
+- `POST /discuss/<post_id>/replies/<reply_id>/delete`
+
+### Private discussions
+- `GET,POST /discuss/private`
+- `POST /discuss/private/join`
+- `GET /discuss/private/join/<invite_code>`
+- `GET /discuss/private/<discussion_id>`
+- `POST /discuss/private/<discussion_id>/messages`
+
+### Admin
+- `GET /admin/reports`
+- `POST /admin/reports/<report_id>/action`
+
+---
+
+## Development notes
+
+- Schema updates are handled automatically at startup via `ensure_schema_updates()`.
+- Keep media assets inside `static/media/...`.
+- Uploaded profile images are stored under `uploads/profile_pics/`.
+- For production, always set a strong `FLASK_SECRET_KEY`.

@@ -26,6 +26,45 @@
 </div>
 </section>
 
+{% if current_user %}
+<section class="section section-tight media-section">
+	<div class="container">
+		<div class="section-title left">
+			<p>My Sessions</p>
+			<h2>Upcoming Mentor Sessions</h2>
+		</div>
+		<div class="table-wrap panel">
+			<table class="session-table">
+				<thead>
+					<tr>
+						<th>Skill</th>
+						<th>Learner</th>
+						<th>Scheduled Time</th>
+						<th>Action</th>
+					</tr>
+				</thead>
+				<tbody>
+					{% for item in mentor_upcoming_sessions %}
+					<tr>
+						<td>{{ item.skill_name }}</td>
+						<td>{{ item.learner_name }}</td>
+						<td>{{ item.scheduled_for }}</td>
+						<td>
+							<a class="small-link" href="{{ url_for('session_detail', session_id=item.id) }}">Open Session</a>
+						</td>
+					</tr>
+					{% else %}
+					<tr>
+						<td colspan="4" class="empty-row">No upcoming mentor sessions yet.</td>
+					</tr>
+					{% endfor %}
+				</tbody>
+			</table>
+		</div>
+	</div>
+</section>
+{% endif %}
+
 <section class="section section-alt media-section media-features">
 	<div class="container">
 		<div class="section-title">

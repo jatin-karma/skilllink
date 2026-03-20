@@ -21,13 +21,49 @@ def close_db(_error: BaseException | None = None) -> None:
         db_conn.close()
 
 
+def normalize_skill_name(value: object) -> str:
+    if not isinstance(value, str):
+        return ""
+    return " ".join(value.strip().split())
+
+
+def get_table_columns(db_conn: sqlite3.Connection, table_name: str) -> set[str]:
+    return {
+        row["name"] for row in db_conn.execute(f"PRAGMA table_info({table_name})").fetchall()
+    }
+
+
+def normalize_and_dedupe_skills(db_conn: sqlite3.Connection) -> None:
+    skill_rows = db_conn.execute(
+        "SELECT id, user_id, name, skill_type FROM skills ORDER BY id ASC"
+    ).fetchall()
+    seen_skill_keys: set[tuple[int, str, str]] = set()
+    duplicate_skill_ids: list[int] = []
+
+    for row in skill_rows:
+        normalized_name = normalize_skill_name(row["name"])
+        if normalized_name != row["name"]:
+            db_conn.execute(
+                "UPDATE skills SET name = ? WHERE id = ?",
+                (normalized_name, row["id"]),
+            )
+
+        dedupe_key = (row["user_id"], row["skill_type"], normalized_name.lower())
+        if dedupe_key in seen_skill_keys:
+            duplicate_skill_ids.append(row["id"])
+            continue
+        seen_skill_keys.add(dedupe_key)
+
+    if duplicate_skill_ids:
+        placeholders = ",".join("?" for _ in duplicate_skill_ids)
+        db_conn.execute(f"DELETE FROM skills WHERE id IN ({placeholders})", duplicate_skill_ids)
+
+
 def ensure_schema_updates() -> None:
     """Apply lightweight migrations for existing local SQLite databases."""
     db_conn = get_db()
 
-    session_columns = {
-        row["name"] for row in db_conn.execute("PRAGMA table_info(sessions)").fetchall()
-    }
+    session_columns = get_table_columns(db_conn, "sessions")
     if "video_platform" not in session_columns:
         db_conn.execute(
             "ALTER TABLE sessions ADD COLUMN video_platform TEXT NOT NULL DEFAULT 'Google Meet'"
@@ -35,9 +71,7 @@ def ensure_schema_updates() -> None:
     if "meeting_link" not in session_columns:
         db_conn.execute("ALTER TABLE sessions ADD COLUMN meeting_link TEXT DEFAULT ''")
 
-    user_columns = {
-        row["name"] for row in db_conn.execute("PRAGMA table_info(users)").fetchall()
-    }
+    user_columns = get_table_columns(db_conn, "users")
     if "profile_image" not in user_columns:
         db_conn.execute("ALTER TABLE users ADD COLUMN profile_image TEXT DEFAULT ''")
     if "role" not in user_columns:
@@ -49,9 +83,7 @@ def ensure_schema_updates() -> None:
         if first_user:
             db_conn.execute("UPDATE users SET role = 'admin' WHERE id = ?", (first_user["id"],))
 
-    discussion_post_columns = {
-        row["name"] for row in db_conn.execute("PRAGMA table_info(discussion_posts)").fetchall()
-    }
+    discussion_post_columns = get_table_columns(db_conn, "discussion_posts")
     if "topic" not in discussion_post_columns:
         db_conn.execute(
             "ALTER TABLE discussion_posts ADD COLUMN topic TEXT NOT NULL DEFAULT 'General'"
@@ -154,9 +186,62 @@ def ensure_schema_updates() -> None:
     )
     db_conn.execute(
         """
+        CREATE TABLE IF NOT EXISTS notifications (
+            id INTEGER PRIMARY KEY,
+            user_id INTEGER NOT NULL,
+            message TEXT NOT NULL,
+            link_path TEXT DEFAULT '',
+            is_read INTEGER NOT NULL DEFAULT 0,
+            event_type TEXT DEFAULT '',
+            session_id INTEGER,
+            created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+            read_at TEXT,
+            FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE,
+            FOREIGN KEY(session_id) REFERENCES sessions(id) ON DELETE SET NULL
+        )
+        """
+    )
+
+    notification_columns = get_table_columns(db_conn, "notifications")
+    if "link_path" not in notification_columns:
+        db_conn.execute("ALTER TABLE notifications ADD COLUMN link_path TEXT DEFAULT ''")
+    if "is_read" not in notification_columns:
+        db_conn.execute("ALTER TABLE notifications ADD COLUMN is_read INTEGER NOT NULL DEFAULT 0")
+    if "event_type" not in notification_columns:
+        db_conn.execute("ALTER TABLE notifications ADD COLUMN event_type TEXT DEFAULT ''")
+    if "session_id" not in notification_columns:
+        db_conn.execute("ALTER TABLE notifications ADD COLUMN session_id INTEGER")
+    if "read_at" not in notification_columns:
+        db_conn.execute("ALTER TABLE notifications ADD COLUMN read_at TEXT")
+
+    db_conn.execute(
+        """
+        CREATE INDEX IF NOT EXISTS idx_notifications_user_status
+        ON notifications(user_id, is_read, created_at DESC)
+        """
+    )
+    db_conn.execute(
+        """
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_notifications_user_event_session
+        ON notifications(user_id, event_type, session_id)
+        WHERE session_id IS NOT NULL
+          AND TRIM(COALESCE(event_type, '')) != ''
+        """
+    )
+    db_conn.execute(
+        """
         CREATE UNIQUE INDEX IF NOT EXISTS idx_sessions_mentor_skill_unique
         ON sessions(mentor_id, skill_name)
         WHERE status = 'scheduled'
+        """
+    )
+
+    normalize_and_dedupe_skills(db_conn)
+
+    db_conn.execute(
+        """
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_skills_user_type_name_unique
+        ON skills(user_id, skill_type, name COLLATE NOCASE)
         """
     )
     db_conn.commit()

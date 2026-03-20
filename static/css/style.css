@@ -193,22 +193,25 @@ body.auth-page .auth-link:hover {
     color: #FFFFFF;
 }
 
-body.auth-page .particles {
-    position: absolute;
-    inset: 0;
+.particles {
     pointer-events: none;
     z-index: 0;
 }
 
-body.auth-page .particle {
+body.auth-page .particles {
+    position: absolute;
+    inset: 0;
+}
+
+.particle {
     position: absolute;
     border-radius: 999px;
     background: radial-gradient(circle at 30% 30%, rgba(212, 163, 115, 0.35), rgba(164, 113, 72, 0.08));
     filter: blur(0.5px);
-    animation: authParticleDrift 16s ease-in-out infinite;
+    animation: particleDrift 16s ease-in-out infinite;
 }
 
-body.auth-page .particle.p1 {
+.particle.p1 {
     width: 220px;
     height: 220px;
     left: 8%;
@@ -216,7 +219,7 @@ body.auth-page .particle.p1 {
     animation-duration: 17s;
 }
 
-body.auth-page .particle.p2 {
+.particle.p2 {
     width: 170px;
     height: 170px;
     right: 10%;
@@ -225,7 +228,7 @@ body.auth-page .particle.p2 {
     animation-delay: -3s;
 }
 
-body.auth-page .particle.p3 {
+.particle.p3 {
     width: 200px;
     height: 200px;
     left: 18%;
@@ -234,7 +237,7 @@ body.auth-page .particle.p3 {
     animation-delay: -5s;
 }
 
-body.auth-page .particle.p4 {
+.particle.p4 {
     width: 150px;
     height: 150px;
     right: 20%;
@@ -243,7 +246,7 @@ body.auth-page .particle.p4 {
     animation-delay: -2s;
 }
 
-@keyframes authParticleDrift {
+@keyframes particleDrift {
     0%,
     100% {
         transform: translate(0, 0) scale(1);
@@ -397,6 +400,117 @@ main {
     align-items: center;
 }
 
+.nav-notify-wrap {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+}
+
+.nav-notify-icon {
+    position: relative;
+    width: 40px;
+    height: 40px;
+    min-width: 40px;
+    border-radius: 999px;
+    border: 1px solid rgba(164, 113, 72, 0.35);
+    background: rgba(107, 62, 38, 0.22);
+    color: #D4A373;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+}
+
+.nav-notify-icon:hover {
+    border-color: #D4A373;
+    background: rgba(107, 62, 38, 0.35);
+}
+
+.nav-notify-glyph {
+    font-size: 1.05rem;
+    line-height: 1;
+}
+
+.nav-notify-badge {
+    position: absolute;
+    top: -6px;
+    right: -6px;
+    min-width: 18px;
+    height: 18px;
+    padding: 0 0.25rem;
+    border-radius: 999px;
+    background: #ff6b6b;
+    color: #FFFFFF;
+    font-size: 0.66rem;
+    font-weight: 700;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border: 1px solid rgba(13, 13, 13, 0.85);
+}
+
+.nav-notify-dropdown {
+    display: none;
+    position: absolute;
+    top: calc(100% + 8px);
+    right: 0;
+    width: min(360px, 90vw);
+    max-height: 360px;
+    overflow: hidden;
+    background: #1a0d08;
+    border: 1px solid rgba(164, 113, 72, 0.3);
+    border-radius: 0.7rem;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+    z-index: 9999;
+}
+
+.nav-notify-wrap:hover .nav-notify-dropdown,
+.nav-notify-wrap.open .nav-notify-dropdown {
+    display: block;
+}
+
+.nav-notify-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.5rem;
+    padding: 0.6rem 0.75rem;
+    border-bottom: 1px solid rgba(164, 113, 72, 0.2);
+}
+
+.nav-notify-mark-form {
+    margin: 0;
+}
+
+.nav-notify-mark-btn {
+    padding: 0.28rem 0.5rem;
+    font-size: 0.72rem;
+}
+
+.nav-notify-list {
+    max-height: 300px;
+    overflow-y: auto;
+}
+
+.nav-notify-item {
+    display: grid;
+    gap: 0.2rem;
+    padding: 0.62rem 0.78rem;
+    color: #FFFFFF;
+    border-bottom: 1px solid rgba(164, 113, 72, 0.14);
+}
+
+.nav-notify-item:hover {
+    text-decoration: none;
+    background: rgba(212, 163, 115, 0.12);
+    color: #D4A373;
+}
+
+.nav-notify-empty {
+    margin: 0;
+    padding: 0.8rem;
+}
+
 .nav-profile-dropdown {
     display: none;
     position: absolute;
@@ -445,6 +559,10 @@ main {
     cursor: pointer;
     border: none;
     background: none;
+}
+
+.hidden {
+    display: none !important;
 }
 
 .section {
@@ -1237,6 +1355,39 @@ select:focus {
     gap: 0.35rem;
 }
 
+.star-rating {
+    display: inline-flex;
+    flex-direction: row-reverse;
+    gap: 0.2rem;
+    width: fit-content;
+}
+
+.star-rating input {
+    position: absolute;
+    opacity: 0;
+    pointer-events: none;
+}
+
+.star-rating label {
+    font-size: 1.1rem;
+    line-height: 1;
+    color: rgba(255, 255, 255, 0.3);
+    cursor: pointer;
+    transition: color 0.15s ease;
+}
+
+.star-rating label:hover,
+.star-rating label:hover ~ label,
+.star-rating input:checked ~ label {
+    color: #D4A373;
+}
+
+.review-stars {
+    color: #D4A373;
+    letter-spacing: 0.04em;
+    font-weight: 700;
+}
+
 .small-link {
     font-size: 0.84rem;
     font-weight: 700;
@@ -1334,6 +1485,11 @@ select:focus {
 .status-scheduled {
     background: rgba(121, 168, 255, 0.15);
     color: #79a8ff;
+}
+
+.status-ongoing {
+    background: rgba(245, 166, 35, 0.15);
+    color: #f5a623;
 }
 
 .status-completed {
@@ -2136,6 +2292,40 @@ footer ul {
     gap: 0.5rem;
 }
 
+.profile-skill-item-wrap {
+    display: grid;
+    gap: 0.45rem;
+    width: 100%;
+}
+
+.profile-skill-chip-row {
+    display: flex;
+    align-items: center;
+    gap: 0.35rem;
+    flex-wrap: wrap;
+}
+
+.profile-skill-chip-actions {
+    display: inline-flex;
+    gap: 0.32rem;
+    align-items: center;
+}
+
+.profile-skill-delete-form {
+    margin: 0;
+}
+
+.profile-skill-icon-btn {
+    min-width: 2rem;
+    height: 2rem;
+    padding: 0;
+    line-height: 1;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1rem;
+}
+
 .profile-label-button {
     cursor: pointer;
 }
@@ -2521,4 +2711,31 @@ body.modal-open {
     .profile-modal-actions .btn {
         width: 100%;
     }
+}
+
+body:not(.auth-page) main {
+    position: relative;
+    isolation: isolate;
+    overflow: hidden;
+}
+
+body:not(.auth-page) .site-particles {
+    position: absolute;
+    inset: 0;
+    overflow: hidden;
+}
+
+body:not(.auth-page) .site-particles .site-particle {
+    filter: blur(0.8px);
+}
+
+@media (max-width: 680px) {
+    body:not(.auth-page) .site-particles .site-particle {
+        filter: blur(0.6px);
+    }
+}
+
+body:not(.auth-page) main > *:not(.site-particles) {
+    position: relative;
+    z-index: 1;
 }

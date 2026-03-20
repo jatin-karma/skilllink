@@ -1,5 +1,6 @@
 from typing import Any
 
+from flask import current_app
 from sqlalchemy import func, or_, select, text
 
 from extensions import db
@@ -10,11 +11,21 @@ def _mappings_to_dicts(rows) -> list[dict[str, Any]]:
     return [dict(row) for row in rows]
 
 
+def get_session_auto_complete_hours() -> int:
+    raw_value = current_app.config.get("SESSION_AUTO_COMPLETE_HOURS", 2)
+    try:
+        parsed_value = int(raw_value)
+    except (TypeError, ValueError):
+        return 2
+    return max(1, parsed_value)
+
+
 def fetch_skills_page_data(
     query_text: str,
     category: str,
     level: str,
     min_rating: float | None,
+    exclude_user_id: int | None = None,
 ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
     mentor_rating_expr = func.coalesce(func.round(func.avg(Review.rating), 1), 0).label(
         "mentor_rating"
@@ -36,6 +47,9 @@ def fetch_skills_page_data(
         .outerjoin(Review, Review.reviewee_id == User.id)
         .where(Skill.skill_type == "teach")
     )
+
+    if exclude_user_id is not None:
+        stmt = stmt.where(Skill.user_id != exclude_user_id)
 
     if query_text:
         like_query = f"%{query_text}%"
@@ -74,6 +88,8 @@ def fetch_skills_page_data(
         .distinct()
         .order_by(Skill.category.asc())
     )
+    if exclude_user_id is not None:
+        category_stmt = category_stmt.where(Skill.user_id != exclude_user_id)
     categories = _mappings_to_dicts(db.session.execute(category_stmt).mappings().all())
 
     return skill_rows, categories
@@ -219,6 +235,7 @@ def fetch_profile_page_data(
 
     my_sessions: list[dict[str, Any]] = []
     if current_user_id and current_user_id == user_id:
+        auto_complete_modifier = f"+{get_session_auto_complete_hours()} hours"
         my_sessions_stmt = text(
             """
             SELECT
@@ -227,7 +244,16 @@ def fetch_profile_page_data(
                 se.scheduled_for,
                 se.video_platform,
                 se.meeting_link,
-                se.status,
+                se.status AS raw_status,
+                CASE
+                    WHEN se.status = 'scheduled'
+                     AND datetime(datetime(se.scheduled_for, :auto_complete_modifier)) <= datetime('now', 'localtime')
+                    THEN 'completed'
+                    WHEN se.status = 'scheduled'
+                     AND datetime(se.scheduled_for) <= datetime('now', 'localtime')
+                    THEN 'ongoing'
+                    ELSE se.status
+                END AS status,
                 se.notes,
                 se.learner_id,
                 se.mentor_id,
@@ -270,6 +296,7 @@ def fetch_profile_page_data(
                 {
                     "viewer_id": current_user_id,
                     "owner_id": user_id,
+                    "auto_complete_modifier": auto_complete_modifier,
                 },
             ).mappings().all()
         )

@@ -92,6 +92,33 @@ class SessionRead(db.Model):
     )
 
 
+class Notification(db.Model):
+    __tablename__ = "notifications"
+
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    message = db.Column(db.Text, nullable=False)
+    link_path = db.Column(db.Text, default="", server_default="")
+    is_read = db.Column(db.Integer, nullable=False, default=0, server_default="0")
+    event_type = db.Column(db.Text, default="", server_default="")
+    session_id = db.Column(db.Integer, db.ForeignKey("sessions.id", ondelete="SET NULL"))
+    created_at = db.Column(db.Text, server_default=text("CURRENT_TIMESTAMP"))
+    read_at = db.Column(db.Text)
+
+    __table_args__ = (
+        CheckConstraint("is_read IN (0, 1)", name="ck_notifications_is_read"),
+        Index("idx_notifications_user_status", "user_id", "is_read", "created_at"),
+        Index(
+            "idx_notifications_user_event_session",
+            "user_id",
+            "event_type",
+            "session_id",
+            unique=True,
+            sqlite_where=text("session_id IS NOT NULL AND TRIM(COALESCE(event_type, '')) != ''"),
+        ),
+    )
+
+
 class Review(db.Model):
     __tablename__ = "reviews"
 

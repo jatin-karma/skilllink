@@ -3,7 +3,7 @@
 {% block title %}Become a Mentor — SkillLink{% endblock %}
 
 {% block content %}
-<section class="hero hero-small hero-media-section hero-find-mentors">
+<section class="hero hero-media-section hero-home-edge">
 	<video class="hero-media" autoplay muted loop playsinline preload="metadata" poster="{{ url_for('static', filename='media/images/stats-bg.png') }}">
 		<source src="{{ url_for('static', filename='media/videos/hero-skills.mp4') }}" type="video/mp4">
 	</video>
@@ -104,22 +104,4 @@
 </section>
 {% endif %}
 
-{# ── Bottom CTA ── #}
-<section class="section section-tight">
-	<div class="container">
-		<div class="flow-global-cta panel">
-			<p class="hero-kicker">Ready to Teach?</p>
-			<h2>Start mentoring today — it only takes a minute.</h2>
-			<div class="hero-actions">
-				{% if current_user %}
-				<a class="btn btn-primary" href="{{ url_for('profile_by_id', user_id=current_user.id) }}">Go to My Profile</a>
-				<a class="btn btn-outline" href="{{ url_for('learn_skill') }}">Browse Learners</a>
-				{% else %}
-				<a class="btn btn-primary" href="{{ url_for('register') }}">Create Account</a>
-				<a class="btn btn-outline" href="{{ url_for('login') }}">Sign In</a>
-				{% endif %}
-			</div>
-		</div>
-	</div>
-</section>
 {% endblock %}

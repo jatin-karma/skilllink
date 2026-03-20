@@ -7,7 +7,7 @@ from functools import wraps
 from urllib.parse import urlparse
 from uuid import uuid4
 
-from flask import Flask, abort, flash, g, redirect, render_template, request, send_from_directory, session, url_for
+from flask import Flask, abort, flash, g, jsonify, redirect, render_template, request, send_from_directory, session, url_for
 from database import close_db, get_db, initialize_database
 from extensions import db
 from query_services import (
@@ -48,6 +48,12 @@ app.config["SESSION_COOKIE_HTTPONLY"] = True
 app.config["SESSION_COOKIE_SAMESITE"] = "Lax"
 app.config["SESSION_COOKIE_SECURE"] = IS_PRODUCTION
 
+try:
+    session_auto_complete_hours = int(os.environ.get("SESSION_AUTO_COMPLETE_HOURS", "2"))
+except ValueError:
+    session_auto_complete_hours = 2
+app.config["SESSION_AUTO_COMPLETE_HOURS"] = max(1, session_auto_complete_hours)
+
 if not IS_PRODUCTION:
     app.config["TEMPLATES_AUTO_RELOAD"] = True
     app.config["SEND_FILE_MAX_AGE_DEFAULT"] = 0
@@ -63,6 +69,7 @@ PROFILE_DASHBOARD_MEDIA_MAX_CHARS = 5_800_000
 PROFILE_DASHBOARD_MAX_POST_LIKES = 500
 PRIVATE_DISCUSSION_INVITE_CODE_LENGTH = 8
 PRIVATE_DISCUSSION_INVITE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
+NOTIFICATION_LIST_LIMIT = 20
 DISCUSSION_TOPICS = [
     "General",
     "Programming",
@@ -479,7 +486,6 @@ def save_profile_dashboard_state_for_user(user_id: int, state: dict) -> None:
         (user_id, serialized_state),
     )
     get_db().commit()
-    get_db().commit()
 
 
 def get_csrf_token() -> str:
@@ -603,6 +609,170 @@ def load_logged_in_user() -> None:
     g.current_user = get_current_user()
 
 
+def is_static_request() -> bool:
+    return request.endpoint == "static"
+
+
+def get_session_auto_complete_modifier() -> str:
+    return f"+{get_session_auto_complete_hours()} hours"
+
+
+def get_unread_notification_count(db_conn, user_id: int) -> int:
+    row = db_conn.execute(
+        "SELECT COUNT(*) AS total FROM notifications WHERE user_id = ? AND is_read = 0",
+        (user_id,),
+    ).fetchone()
+    return int(row["total"]) if row else 0
+
+
+def fetch_unread_notification_rows(db_conn, user_id: int, limit: int):
+    return db_conn.execute(
+        """
+        SELECT id, message, link_path, event_type, created_at
+        FROM notifications
+        WHERE user_id = ?
+          AND is_read = 0
+        ORDER BY datetime(created_at) DESC, id DESC
+        LIMIT ?
+        """,
+        (user_id, limit),
+    ).fetchall()
+
+
+def serialize_notification_row(
+    row,
+    *,
+    include_created_at: bool,
+) -> dict[str, object]:
+    item: dict[str, object] = {
+        "id": row["id"],
+        "message": row["message"],
+        "link_path": row["link_path"] or "",
+        "event_type": row["event_type"] or "",
+    }
+    if include_created_at:
+        item["created_at"] = row["created_at"]
+    return item
+
+
+@app.before_request
+def queue_session_start_notifications() -> None:
+    if is_static_request():
+        return
+
+    db = get_db()
+    auto_complete_modifier = get_session_auto_complete_modifier()
+    due_sessions = db.execute(
+        """
+        SELECT
+            se.id,
+            se.skill_name,
+            se.learner_id,
+            se.mentor_id,
+            learner.name AS learner_name,
+            mentor.name AS mentor_name
+        FROM sessions se
+        JOIN users learner ON learner.id = se.learner_id
+        JOIN users mentor ON mentor.id = se.mentor_id
+        WHERE se.status = 'scheduled'
+          AND datetime(se.scheduled_for) <= datetime('now', 'localtime')
+          AND datetime(datetime(se.scheduled_for, ?)) > datetime('now', 'localtime')
+        ORDER BY datetime(se.scheduled_for) ASC, se.id ASC
+        LIMIT 80
+        """,
+        (auto_complete_modifier,),
+    ).fetchall()
+    if not due_sessions:
+        return
+
+    for item in due_sessions:
+        session_path = url_for("session_detail", session_id=item["id"])
+        create_user_notification(
+            db,
+            item["mentor_id"],
+            f"Meeting for '{item['skill_name']}' with {item['learner_name']} is starting now.",
+            session_path,
+            event_type="meeting_start",
+            session_id=item["id"],
+        )
+        create_user_notification(
+            db,
+            item["learner_id"],
+            f"Meeting for '{item['skill_name']}' with {item['mentor_name']} is starting now.",
+            session_path,
+            event_type="meeting_start",
+            session_id=item["id"],
+        )
+
+    db.commit()
+
+
+@app.before_request
+def show_unread_notifications() -> None:
+    g.browser_notifications = []
+    g.unread_notifications = []
+    g.unread_notification_count = 0
+
+    if is_static_request() or request.method != "GET":
+        return
+
+    current_user = g.get("current_user")
+    if not current_user:
+        return
+
+    db = get_db()
+    unread_count = get_unread_notification_count(db, current_user["id"])
+    g.unread_notification_count = unread_count
+    if unread_count == 0:
+        return
+
+    unread_notifications = fetch_unread_notification_rows(
+        db,
+        current_user["id"],
+        NOTIFICATION_LIST_LIMIT,
+    )
+    if not unread_notifications:
+        return
+
+    g.unread_notifications = [
+        serialize_notification_row(row, include_created_at=True)
+        for row in unread_notifications
+    ]
+    g.browser_notifications = [
+        serialize_notification_row(row, include_created_at=False)
+        for row in unread_notifications
+    ]
+
+
+def get_session_auto_complete_hours() -> int:
+    raw_value = app.config.get("SESSION_AUTO_COMPLETE_HOURS", 2)
+    try:
+        parsed_value = int(raw_value)
+    except (TypeError, ValueError):
+        return 2
+    return max(1, parsed_value)
+
+
+@app.before_request
+def auto_complete_expired_sessions() -> None:
+    if is_static_request():
+        return
+
+    auto_complete_modifier = get_session_auto_complete_modifier()
+    db = get_db()
+    cursor = db.execute(
+        """
+        UPDATE sessions
+        SET status = 'completed'
+        WHERE status = 'scheduled'
+          AND datetime(datetime(scheduled_for, ?)) <= datetime('now', 'localtime')
+        """,
+        (auto_complete_modifier,),
+    )
+    if cursor.rowcount > 0:
+        db.commit()
+
+
 @app.before_request
 def enforce_csrf() -> None:
     if request.method not in {"POST", "PUT", "PATCH", "DELETE"}:
@@ -635,6 +805,9 @@ def inject_template_data() -> dict:
         "split_tags": split_tags,
         "get_profile_image_url": profile_image_url,
         "static_file_version": static_file_version,
+        "unread_notifications": g.get("unread_notifications", []),
+        "unread_notification_count": g.get("unread_notification_count", 0),
+        "browser_notifications": g.get("browser_notifications", []),
     }
 
 
@@ -774,6 +947,7 @@ def skill_thumbnail_file(skill_name: str, category: str) -> str:
 @app.route("/")
 def home():
     db = get_db()
+    current_user_id = g.current_user["id"] if g.current_user else None
     stats = db.execute(
         """
         SELECT
@@ -817,11 +991,32 @@ def home():
         """
     ).fetchall()
 
+    mentor_upcoming_sessions = []
+    if current_user_id:
+        mentor_upcoming_sessions = db.execute(
+            """
+            SELECT
+                se.id,
+                se.skill_name,
+                se.scheduled_for,
+                learner.name AS learner_name
+            FROM sessions se
+            JOIN users learner ON learner.id = se.learner_id
+            WHERE se.mentor_id = ?
+              AND se.status = 'scheduled'
+              AND datetime(se.scheduled_for) >= datetime('now')
+            ORDER BY datetime(se.scheduled_for) ASC
+            LIMIT 8
+            """,
+            (current_user_id,),
+        ).fetchall()
+
     return render_template(
         "index.html",
         stats=stats,
         popular_skills=popular_skills,
         testimonials=testimonials,
+        mentor_upcoming_sessions=mentor_upcoming_sessions,
     )
 
 
@@ -924,23 +1119,15 @@ def logout():
 
 @app.route("/skills")
 def skills():
-    query_text = normalize_text(request.args.get("q", ""))
-    category = normalize_text(request.args.get("category", ""))
-    level = normalize_text(request.args.get("level", ""))
-    min_rating_raw = normalize_text(request.args.get("min_rating", ""))
-    min_rating: float | None = None
-
-    if min_rating_raw:
-        try:
-            min_rating = float(min_rating_raw)
-        except ValueError:
-            flash("Minimum rating filter was ignored due to invalid value.", "warning")
+    current_user_id = g.current_user["id"] if g.current_user else None
+    query_text, category, level, min_rating_raw, min_rating = _build_skill_filters(request)
 
     skill_rows, categories = fetch_skills_page_data(
         query_text=query_text,
         category=category,
         level=level,
         min_rating=min_rating,
+        exclude_user_id=current_user_id,
     )
 
     filters = {
@@ -974,6 +1161,7 @@ def _build_skill_filters(request):
 
 @app.route("/become-mentor")
 def become_mentor():
+    current_user_id = g.current_user["id"] if g.current_user else None
     query_text, category, level, min_rating_raw, min_rating = _build_skill_filters(request)
     # Show teach-type skills (mentors available) so visitors can see what topics are taught
     skill_rows, categories = fetch_skills_page_data(
@@ -981,6 +1169,7 @@ def become_mentor():
         category=category,
         level=level,
         min_rating=min_rating,
+        exclude_user_id=current_user_id,
     )
     filters = {"q": query_text, "category": category, "level": level, "min_rating": min_rating_raw}
     return render_template("become_mentor.html", skills=skill_rows, categories=categories, filters=filters)
@@ -988,12 +1177,14 @@ def become_mentor():
 
 @app.route("/learn")
 def learn_skill():
+    current_user_id = g.current_user["id"] if g.current_user else None
     query_text, category, level, min_rating_raw, min_rating = _build_skill_filters(request)
     skill_rows, categories = fetch_skills_page_data(
         query_text=query_text,
         category=category,
         level=level,
         min_rating=min_rating,
+        exclude_user_id=current_user_id,
     )
     filters = {"q": query_text, "category": category, "level": level, "min_rating": min_rating_raw}
     return render_template("learn_skill.html", skills=skill_rows, categories=categories, filters=filters)
@@ -1115,6 +1306,235 @@ def add_skill():
     return redirect(request.referrer or url_for("profile", user_id=g.current_user["id"]))
 
 
+@app.route("/skills/<int:skill_id>/delete", methods=["POST"])
+@login_required
+def delete_skill(skill_id: int):
+    db = get_db()
+    user_id = g.current_user["id"]
+
+    skill_row = db.execute(
+        "SELECT id, user_id, name FROM skills WHERE id = ?",
+        (skill_id,),
+    ).fetchone()
+    if not skill_row:
+        flash("Skill not found.", "danger")
+        return redirect(request.referrer or url_for("profile", user_id=user_id))
+
+    if skill_row["user_id"] != user_id:
+        flash("You are not authorized to delete this skill.", "danger")
+        return redirect(request.referrer or url_for("profile", user_id=user_id))
+
+    db.execute("DELETE FROM skills WHERE id = ? AND user_id = ?", (skill_id, user_id))
+    db.commit()
+    flash(f"Removed skill '{skill_row['name']}'.", "success")
+    return redirect(request.referrer or url_for("profile", user_id=user_id))
+
+
+def parse_session_datetime(raw_value: str) -> datetime | None:
+    try:
+        return datetime.fromisoformat(raw_value)
+    except ValueError:
+        return None
+
+
+def extract_session_meeting_inputs(form_data) -> dict[str, str]:
+    return {
+        "scheduled_raw": form_data.get("scheduled_for", ""),
+        "notes": normalize_text(form_data.get("notes", "")),
+        "video_platform": normalize_text(form_data.get("video_platform", "")),
+        "meeting_link": normalize_text(form_data.get("meeting_link", "")),
+    }
+
+
+def validate_session_meeting_inputs(
+    session_inputs: dict[str, str],
+) -> tuple[datetime | None, str | None]:
+    video_platform = session_inputs["video_platform"]
+    meeting_link = session_inputs["meeting_link"]
+    scheduled_raw = session_inputs["scheduled_raw"]
+
+    if video_platform not in VIDEO_PLATFORMS:
+        return None, "Please select a valid video platform."
+
+    if not meeting_link:
+        return None, "Meeting link is required for the appointment."
+
+    scheduled_dt = parse_session_datetime(scheduled_raw)
+    if scheduled_dt is None:
+        return None, "Please provide a valid date and time."
+
+    return scheduled_dt, None
+
+
+def get_effective_session_status(
+    status: str,
+    scheduled_for: str | None,
+    now: datetime | None = None,
+) -> str:
+    normalized_status = normalize_text(status).lower()
+    if normalized_status != "scheduled":
+        return normalized_status or status
+
+    if not scheduled_for:
+        return normalized_status
+
+    scheduled_dt = parse_session_datetime(scheduled_for)
+    if scheduled_dt is None:
+        return normalized_status
+
+    current_time = now or datetime.now()
+    if scheduled_dt + timedelta(hours=get_session_auto_complete_hours()) <= current_time:
+        return "completed"
+
+    if scheduled_dt <= current_time:
+        return "ongoing"
+
+    return normalized_status
+
+
+def create_user_notification(
+    db_conn,
+    user_id: int,
+    message: str,
+    link_path: str = "",
+    event_type: str = "",
+    session_id: int | None = None,
+) -> None:
+    normalized_message = normalize_free_text(message, 320)
+    if not normalized_message:
+        return
+
+    normalized_event_type = normalize_free_text(event_type, 40)
+
+    db_conn.execute(
+        """
+        INSERT INTO notifications (user_id, message, link_path, event_type, session_id)
+        VALUES (?, ?, ?, ?, ?)
+        ON CONFLICT DO NOTHING
+        """,
+        (
+            user_id,
+            normalized_message,
+            normalize_free_text(link_path, 260),
+            normalized_event_type,
+            session_id,
+        ),
+    )
+
+
+def has_mentor_skill_conflict(
+    db_conn,
+    mentor_id: int,
+    skill_name: str,
+    exclude_session_id: int | None = None,
+) -> bool:
+    if exclude_session_id is None:
+        row = db_conn.execute(
+            "SELECT id FROM sessions WHERE mentor_id = ? AND skill_name = ? AND status = ?",
+            (mentor_id, skill_name, "scheduled"),
+        ).fetchone()
+    else:
+        row = db_conn.execute(
+            "SELECT id FROM sessions WHERE mentor_id = ? AND skill_name = ? AND status = ? AND id != ?",
+            (mentor_id, skill_name, "scheduled", exclude_session_id),
+        ).fetchone()
+    return row is not None
+
+
+def has_learner_duplicate_session(
+    db_conn,
+    learner_id: int,
+    mentor_id: int,
+    skill_name: str,
+    exclude_session_id: int | None = None,
+) -> bool:
+    if exclude_session_id is None:
+        row = db_conn.execute(
+            "SELECT id FROM sessions WHERE learner_id = ? AND mentor_id = ? AND skill_name = ? AND status IN (?, ?)",
+            (learner_id, mentor_id, skill_name, "scheduled", "completed"),
+        ).fetchone()
+    else:
+        row = db_conn.execute(
+            "SELECT id FROM sessions WHERE learner_id = ? AND mentor_id = ? AND skill_name = ? AND status IN (?, ?) AND id != ?",
+            (learner_id, mentor_id, skill_name, "scheduled", "completed", exclude_session_id),
+        ).fetchone()
+    return row is not None
+
+
+def has_learner_time_overlap(
+    db_conn,
+    learner_id: int,
+    scheduled_dt: datetime,
+    exclude_session_id: int | None = None,
+) -> bool:
+    window_start = scheduled_dt.strftime("%Y-%m-%d %H:%M:00")
+    window_end = (scheduled_dt + timedelta(hours=1)).strftime("%Y-%m-%d %H:%M:00")
+
+    if exclude_session_id is None:
+        row = db_conn.execute(
+            """
+            SELECT id FROM sessions
+            WHERE learner_id = ?
+              AND status IN (?, ?)
+              AND datetime(scheduled_for) < datetime(?)
+              AND datetime(datetime(scheduled_for, '+1 hour')) > datetime(?)
+            """,
+            (learner_id, "scheduled", "completed", window_end, window_start),
+        ).fetchone()
+    else:
+        row = db_conn.execute(
+            """
+            SELECT id FROM sessions
+            WHERE learner_id = ?
+              AND status IN (?, ?)
+              AND id != ?
+              AND datetime(scheduled_for) < datetime(?)
+              AND datetime(datetime(scheduled_for, '+1 hour')) > datetime(?)
+            """,
+            (learner_id, "scheduled", "completed", exclude_session_id, window_end, window_start),
+        ).fetchone()
+    return row is not None
+
+
+def get_session_conflict_message(
+    db_conn,
+    learner_id: int,
+    mentor_id: int,
+    skill_name: str,
+    scheduled_dt: datetime,
+    *,
+    mentor_conflict_message: str,
+    duplicate_conflict_message: str,
+    exclude_session_id: int | None = None,
+) -> str | None:
+    if has_mentor_skill_conflict(
+        db_conn,
+        mentor_id,
+        skill_name,
+        exclude_session_id=exclude_session_id,
+    ):
+        return mentor_conflict_message
+
+    if has_learner_duplicate_session(
+        db_conn,
+        learner_id,
+        mentor_id,
+        skill_name,
+        exclude_session_id=exclude_session_id,
+    ):
+        return duplicate_conflict_message
+
+    if has_learner_time_overlap(
+        db_conn,
+        learner_id,
+        scheduled_dt,
+        exclude_session_id=exclude_session_id,
+    ):
+        return "You already have another session scheduled during this time (sessions are assumed to be 1 hour). Please choose a different time."
+
+    return None
+
+
 @app.route("/sessions/schedule", methods=["POST"])
 @login_required
 def schedule_session():
@@ -1122,18 +1542,12 @@ def schedule_session():
     learner_id = g.current_user["id"]
 
     skill_name = normalize_text(request.form.get("skill_name", ""))
-    notes = normalize_text(request.form.get("notes", ""))
-    video_platform = normalize_text(request.form.get("video_platform", ""))
-    meeting_link = normalize_text(request.form.get("meeting_link", ""))
     mentor_id_raw = request.form.get("mentor_id", "")
-    scheduled_raw = request.form.get("scheduled_for", "")
+    session_inputs = extract_session_meeting_inputs(request.form)
 
-    if video_platform not in VIDEO_PLATFORMS:
-        flash("Please select a valid video platform.", "danger")
-        return redirect(request.referrer or url_for("matches"))
-
-    if not meeting_link:
-        flash("Meeting link is required for the appointment.", "danger")
+    scheduled_dt, meeting_input_error = validate_session_meeting_inputs(session_inputs)
+    if meeting_input_error:
+        flash(meeting_input_error, "danger")
         return redirect(request.referrer or url_for("matches"))
 
     try:
@@ -1151,52 +1565,24 @@ def schedule_session():
         flash("Selected mentor does not exist.", "danger")
         return redirect(request.referrer or url_for("matches"))
 
-    try:
-        scheduled_dt = datetime.fromisoformat(scheduled_raw)
-    except ValueError:
-        flash("Please provide a valid date and time.", "danger")
+    conflict_message = get_session_conflict_message(
+        db,
+        learner_id,
+        mentor_id,
+        skill_name,
+        scheduled_dt,
+        mentor_conflict_message=(
+            f"This mentor already has a scheduled session for '{skill_name}'. Please choose a different skill or wait for the current session to complete/be cancelled."
+        ),
+        duplicate_conflict_message=(
+            f"You already have an active or completed session with this mentor for '{skill_name}'. Please wait until it ends or is cancelled before booking again."
+        ),
+    )
+    if conflict_message:
+        flash(conflict_message, "danger")
         return redirect(request.referrer or url_for("matches"))
 
-    existing_session = db.execute(
-        "SELECT id FROM sessions WHERE mentor_id = ? AND skill_name = ? AND status = ?",
-        (mentor_id, skill_name, "scheduled"),
-    ).fetchone()
-    if existing_session:
-        flash(
-            f"This mentor already has a scheduled session for '{skill_name}'. Please choose a different skill or wait for the current session to complete/be cancelled.",
-            "danger",
-        )
-        return redirect(request.referrer or url_for("matches"))
-
-    learner_duplicate = db.execute(
-        "SELECT id FROM sessions WHERE learner_id = ? AND mentor_id = ? AND skill_name = ? AND status IN (?, ?)",
-        (learner_id, mentor_id, skill_name, "scheduled", "completed"),
-    ).fetchone()
-    if learner_duplicate:
-        flash(
-            f"You already have an active or completed session with this mentor for '{skill_name}'. Please wait until it ends or is cancelled before booking again.",
-            "danger",
-        )
-        return redirect(request.referrer or url_for("matches"))
-
-    overlapping_session = db.execute(
-        """
-        SELECT id FROM sessions
-        WHERE learner_id = ?
-          AND status IN (?, ?)
-          AND datetime(scheduled_for) < datetime(?)
-          AND datetime(datetime(scheduled_for, '+1 hour')) > datetime(?)
-        """,
-        (learner_id, "scheduled", "completed", (scheduled_dt + timedelta(hours=1)).strftime("%Y-%m-%d %H:%M:00"), scheduled_dt.strftime("%Y-%m-%d %H:%M:00")),
-    ).fetchone()
-    if overlapping_session:
-        flash(
-            "You already have another session scheduled during this time (sessions are assumed to be 1 hour). Please choose a different time.",
-            "danger",
-        )
-        return redirect(request.referrer or url_for("matches"))
-
-    db.execute(
+    cursor = db.execute(
         """
         INSERT INTO sessions (learner_id, mentor_id, skill_name, scheduled_for, video_platform, meeting_link, notes)
         VALUES (?, ?, ?, ?, ?, ?, ?)
@@ -1206,14 +1592,67 @@ def schedule_session():
             mentor_id,
             skill_name,
             scheduled_dt.strftime("%Y-%m-%d %H:%M"),
-            video_platform,
-            meeting_link,
-            notes,
+            session_inputs["video_platform"],
+            session_inputs["meeting_link"],
+            session_inputs["notes"],
         ),
     )
+
+    session_id = cursor.lastrowid
+    learner_name = g.current_user.get("name", "A learner")
+    scheduled_label = scheduled_dt.strftime("%d %b %Y %I:%M %p")
+    create_user_notification(
+        db,
+        mentor_id,
+        f"{learner_name} scheduled '{skill_name}' on {scheduled_label}.",
+        url_for("session_detail", session_id=session_id),
+        event_type="session_scheduled",
+        session_id=session_id,
+    )
+
     db.commit()
     flash("Session scheduled successfully.", "success")
     return redirect(request.referrer or url_for("profile", user_id=learner_id))
+
+
+@app.route("/notifications/unread")
+@login_required
+def unread_notifications_api():
+    db = get_db()
+    user_id = g.current_user["id"]
+
+    unread_count = get_unread_notification_count(db, user_id)
+    rows = fetch_unread_notification_rows(db, user_id, NOTIFICATION_LIST_LIMIT)
+    notifications = [
+        serialize_notification_row(row, include_created_at=True)
+        for row in rows
+    ]
+
+    return jsonify({"ok": True, "count": unread_count, "items": notifications})
+
+
+@app.route("/notifications/mark-read", methods=["POST"])
+@login_required
+def mark_all_notifications_read():
+    db = get_db()
+    user_id = g.current_user["id"]
+    db.execute(
+        """
+        UPDATE notifications
+        SET is_read = 1,
+            read_at = CURRENT_TIMESTAMP
+        WHERE user_id = ?
+          AND is_read = 0
+        """,
+        (user_id,),
+    )
+    db.commit()
+
+    if request.headers.get("X-Requested-With") == "XMLHttpRequest":
+        return jsonify({"ok": True})
+
+    flash("Notifications marked as read.", "success")
+    return redirect(request.referrer or url_for("home"))
 
 
 @app.route("/sessions/<int:session_id>/status", methods=["POST"])
@@ -1250,6 +1689,79 @@ def update_session_status(session_id: int):
     return redirect(url_for("profile", user_id=g.current_user["id"]))
 
 
+@app.route("/sessions/<int:session_id>/edit", methods=["POST"])
+@login_required
+def edit_session(session_id: int):
+    db = get_db()
+    user_id = g.current_user["id"]
+
+    session_row = db.execute(
+        """
+        SELECT id, learner_id, mentor_id, skill_name, status, scheduled_for
+        FROM sessions
+        WHERE id = ?
+        """,
+        (session_id,),
+    ).fetchone()
+    if not session_row:
+        flash("Session not found.", "danger")
+        return redirect(url_for("profile", user_id=user_id))
+
+    if user_id not in (session_row["mentor_id"], session_row["learner_id"]):
+        flash("You are not authorized to edit this session.", "danger")
+        return redirect(url_for("profile", user_id=user_id))
+
+    effective_status = get_effective_session_status(
+        session_row["status"],
+        session_row["scheduled_for"],
+    )
+    if effective_status != "scheduled":
+        flash("Only scheduled sessions can be edited.", "warning")
+        return redirect(url_for("session_detail", session_id=session_id))
+
+    session_inputs = extract_session_meeting_inputs(request.form)
+    scheduled_dt, meeting_input_error = validate_session_meeting_inputs(session_inputs)
+    if meeting_input_error:
+        flash(meeting_input_error, "danger")
+        return redirect(url_for("session_detail", session_id=session_id))
+
+    conflict_message = get_session_conflict_message(
+        db,
+        session_row["learner_id"],
+        session_row["mentor_id"],
+        session_row["skill_name"],
+        scheduled_dt,
+        mentor_conflict_message=(
+            f"This mentor already has another scheduled session for '{session_row['skill_name']}'. Please choose a different time."
+        ),
+        duplicate_conflict_message=(
+            f"You already have another active or completed session for '{session_row['skill_name']}' with this mentor."
+        ),
+        exclude_session_id=session_id,
+    )
+    if conflict_message:
+        flash(conflict_message, "danger")
+        return redirect(url_for("session_detail", session_id=session_id))
+
+    db.execute(
+        """
+        UPDATE sessions
+        SET scheduled_for = ?, video_platform = ?, meeting_link = ?, notes = ?
+        WHERE id = ?
+        """,
+        (
+            scheduled_dt.strftime("%Y-%m-%d %H:%M"),
+            session_inputs["video_platform"],
+            session_inputs["meeting_link"],
+            session_inputs["notes"],
+            session_id,
+        ),
+    )
+    db.commit()
+    flash("Session updated successfully.", "success")
+    return redirect(url_for("session_detail", session_id=session_id))
+
+
 @app.route("/sessions/<int:session_id>/review", methods=["POST"])
 @login_required
 def submit_review(session_id: int):
@@ -1271,6 +1783,10 @@ def submit_review(session_id: int):
         flash("You cannot review this session.", "danger")
         return redirect(url_for("profile", user_id=g.current_user["id"]))
 
+    if user_id != row["learner_id"]:
+        flash("Only learner can submit a review for this session.", "warning")
+        return redirect(url_for("profile", user_id=g.current_user["id"]))
+
     if row["status"] != "completed":
         flash("Only completed sessions can be reviewed.", "warning")
         return redirect(url_for("profile", user_id=g.current_user["id"]))
@@ -1279,14 +1795,14 @@ def submit_review(session_id: int):
     comment = normalize_text(request.form.get("comment", ""))
     try:
         rating = int(rating_raw)
-    except ValueError:
+    except (TypeError, ValueError):
         flash("Invalid rating value.", "danger")
         return redirect(url_for("profile", user_id=g.current_user["id"]))
     if rating < 1 or rating > 5:
         flash("Rating must be between 1 and 5.", "danger")
         return redirect(url_for("profile", user_id=g.current_user["id"]))
 
-    reviewee_id = row["mentor_id"] if user_id == row["learner_id"] else row["learner_id"]
+    reviewee_id = row["mentor_id"]
 
     db.execute(
         """
@@ -1590,6 +2106,13 @@ def session_detail(session_id: int):
         flash("You are not allowed to view this talking section.", "danger")
         return redirect(url_for("profile"))
 
+    session_item = dict(session_row)
+    session_item["raw_status"] = session_item["status"]
+    session_item["status"] = get_effective_session_status(
+        session_item["status"],
+        session_item["scheduled_for"],
+    )
+
     messages = db.execute(
         """
         SELECT sm.id, sm.message, sm.created_at, sm.sender_id, u.name AS sender_name
@@ -1621,7 +2144,7 @@ def session_detail(session_id: int):
 
     return render_template(
         "session_detail.html",
-        session_item=session_row,
+        session_item=session_item,
         messages=messages,
     )
 

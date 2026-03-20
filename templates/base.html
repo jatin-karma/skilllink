@@ -26,6 +26,39 @@
                 <a href="{{ url_for('admin_reports') }}">Moderation</a>
                 {% endif %}
                 <a href="{{ url_for('matches') }}">Matches</a>
+                <div class="nav-notify-wrap">
+                    <button class="nav-notify-icon" aria-label="Open notifications" type="button">
+                        <span class="nav-notify-glyph" aria-hidden="true">🔔</span>
+                        <span
+                            class="nav-notify-badge{% if unread_notification_count == 0 %} hidden{% endif %}"
+                            data-notify-count
+                        >{{ unread_notification_count }}</span>
+                    </button>
+                    <div class="nav-notify-dropdown">
+                        <div class="nav-notify-header">
+                            <strong>Notifications</strong>
+                            <form method="post" action="{{ url_for('mark_all_notifications_read') }}" class="nav-notify-mark-form">
+                                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                                <button class="btn btn-small btn-outline nav-notify-mark-btn" type="submit">Mark all read</button>
+                            </form>
+                        </div>
+                        <div class="nav-notify-list" data-notify-list>
+                            {% for notification in unread_notifications %}
+                            <a
+                                class="nav-notify-item"
+                                href="{{ notification.link_path if notification.link_path else url_for('profile_by_id', user_id=current_user.id) }}"
+                                data-notify-id="{{ notification.id }}"
+                                data-notify-event="{{ notification.event_type }}"
+                            >
+                                <span>{{ notification.message }}</span>
+                                <span class="small-muted">{{ notification.created_at }}</span>
+                            </a>
+                            {% else %}
+                            <p class="small-muted nav-notify-empty">No unread notifications.</p>
+                            {% endfor %}
+                        </div>
+                    </div>
+                </div>
                 <div class="nav-profile-wrap">
                     <button class="nav-profile-icon" aria-label="Open profile menu" type="button">
                         {% if current_user.profile_image %}
@@ -62,14 +95,34 @@
     {% endwith %}
 
     <main>
+        {% if request.endpoint not in ['login', 'register'] %}
+        <div class="particles site-particles" aria-hidden="true"></div>
+        {% endif %}
         {% block content %}{% endblock %}
     </main>
 
-    {% set flow_cta_hidden_endpoints = ['login', 'register'] %}
+    {% set flow_cta_hidden_endpoints = ['login', 'register', 'home', 'become_mentor', 'learn_skill', 'community'] %}
     {% if request.endpoint not in flow_cta_hidden_endpoints %}
     <section class="section section-tight flow-global-cta-wrap">
         <div class="container">
             <div class="flow-global-cta panel">
+                {% if request.endpoint == 'discuss' and not current_user %}
+                <p class="hero-kicker">Join the Discussion</p>
+                <h2>Create an account to be part of the discussion.</h2>
+                <p>Ask questions, share ideas, and connect with fellow students.</p>
+                <div class="hero-actions">
+                    <a class="btn btn-primary" href="{{ url_for('register') }}">Create Account</a>
+                    <a class="btn btn-outline" href="{{ url_for('login') }}">Sign In</a>
+                </div>
+                {% elif request.endpoint == 'community' and not current_user %}
+                <p class="hero-kicker">Community Feed</p>
+                <h2>Login and see recent activity or see posts.</h2>
+                <p>Sign in to stay updated and interact with the latest community posts.</p>
+                <div class="hero-actions">
+                    <a class="btn btn-primary" href="{{ url_for('login', next=url_for('community')) }}">Login</a>
+                    <a class="btn btn-outline" href="{{ url_for('community') }}">See Posts</a>
+                </div>
+                {% else %}
                 <p class="hero-kicker">Ready to Rally?</p>
                 <h2>Keep your learning momentum.</h2>
                 <p>Find mentors, schedule sessions, and grow with the SkillLink community.</p>
@@ -82,6 +135,7 @@
                     <a class="btn btn-outline" href="{{ url_for('register') }}">Create Account</a>
                     {% endif %}
                 </div>
+                {% endif %}
             </div>
         </div>
     </section>
@@ -133,18 +187,350 @@
     })();
     </script>
     <script>
-    // Profile icon dropdown toggle for touch/click
     (function () {
-        const wrap = document.querySelector('.nav-profile-wrap');
-        if (!wrap) return;
-        const btn = wrap.querySelector('.nav-profile-icon');
-        btn.addEventListener('click', function (e) {
-            e.stopPropagation();
-            wrap.classList.toggle('open');
+        const wraps = document.querySelectorAll('.nav-profile-wrap, .nav-notify-wrap');
+        if (!wraps.length) {
+            return;
+        }
+
+        wraps.forEach((wrap) => {
+            const button = wrap.querySelector('.nav-profile-icon, .nav-notify-icon');
+            if (!button) {
+                return;
+            }
+
+            button.addEventListener('click', (event) => {
+                event.stopPropagation();
+                wraps.forEach((otherWrap) => {
+                    if (otherWrap !== wrap) {
+                        otherWrap.classList.remove('open');
+                    }
+                });
+                wrap.classList.toggle('open');
+            });
         });
-        document.addEventListener('click', function () {
-            wrap.classList.remove('open');
+
+        document.addEventListener('click', () => {
+            wraps.forEach((wrap) => {
+                wrap.classList.remove('open');
+            });
         });
+    })();
+    </script>
+    <script>
+    (() => {
+        const main = document.querySelector('body:not(.auth-page) main');
+        const particleLayer = document.querySelector('body:not(.auth-page) .site-particles');
+        if (!main || !particleLayer) {
+            return;
+        }
+
+        const prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+        const clamp = (value, min, max) => Math.min(max, Math.max(min, value));
+
+        const renderParticles = () => {
+            const width = Math.max(main.clientWidth, main.getBoundingClientRect().width);
+            const height = Math.max(main.scrollHeight, main.clientHeight);
+            if (!width || !height) {
+                return;
+            }
+
+            let targetCount = clamp(Math.round((width * height) / 420000), 4, 12);
+            if (window.innerWidth <= 680) {
+                targetCount = clamp(Math.round(targetCount * 0.75), 3, 6);
+            }
+
+            const cols = Math.max(2, Math.round(Math.sqrt((targetCount * width) / height)));
+            const rows = Math.max(2, Math.ceil(targetCount / cols));
+            const cellWidth = width / cols;
+            const cellHeight = height / rows;
+
+            const minSize = window.innerWidth <= 680 ? 72 : 96;
+            const maxSize = window.innerWidth <= 680 ? 150 : 260;
+
+            const fragment = document.createDocumentFragment();
+            for (let row = 0; row < rows; row += 1) {
+                for (let col = 0; col < cols; col += 1) {
+                    const index = row * cols + col;
+                    if (index >= targetCount) {
+                        break;
+                    }
+
+                    const size = Math.round(minSize + Math.random() * (maxSize - minSize));
+                    const baseX = (col + 0.5) * cellWidth;
+                    const baseY = (row + 0.5) * cellHeight;
+                    const jitterX = (Math.random() - 0.5) * cellWidth * 0.62;
+                    const jitterY = (Math.random() - 0.5) * cellHeight * 0.62;
+
+                    const left = clamp(baseX + jitterX - size / 2, -size * 0.35, width - size * 0.65);
+                    const top = clamp(baseY + jitterY - size / 2, -size * 0.35, height - size * 0.65);
+
+                    const particle = document.createElement('span');
+                    particle.className = 'particle site-particle';
+                    particle.style.width = `${size}px`;
+                    particle.style.height = `${size}px`;
+                    particle.style.left = `${left}px`;
+                    particle.style.top = `${top}px`;
+                    particle.style.opacity = `${(0.22 + Math.random() * 0.24).toFixed(2)}`;
+                    particle.style.animationDuration = `${(12 + Math.random() * 10).toFixed(2)}s`;
+                    particle.style.animationDelay = `${(-Math.random() * 10).toFixed(2)}s`;
+
+                    if (prefersReducedMotion) {
+                        particle.style.animation = 'none';
+                    }
+
+                    fragment.appendChild(particle);
+                }
+            }
+
+            particleLayer.replaceChildren(fragment);
+        };
+
+        let resizeTimer;
+        const rebuildParticles = () => {
+            window.clearTimeout(resizeTimer);
+            resizeTimer = window.setTimeout(renderParticles, 120);
+        };
+
+        renderParticles();
+        window.addEventListener('load', rebuildParticles, { once: true });
+        window.addEventListener('resize', rebuildParticles, { passive: true });
+    })();
+    </script>
+    <script>
+    (() => {
+        const isLoggedIn = {{ 'true' if current_user else 'false' }};
+        if (!isLoggedIn) {
+            return;
+        }
+
+        const notificationsApiUrl = "{{ url_for('unread_notifications_api') }}";
+        const markReadUrl = "{{ url_for('mark_all_notifications_read') }}";
+        const initialNotifications = {{ browser_notifications | tojson }};
+        const iconUrl = "{{ url_for('static', filename='media/images/url_logo.png') }}";
+        const csrfToken = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '';
+        const badge = document.querySelector('[data-notify-count]');
+        const list = document.querySelector('[data-notify-list]');
+        const markReadForm = document.querySelector('.nav-notify-mark-form');
+        const seenStorageKey = 'skilllink.notificationSeenIds';
+
+        const parseSeenNotificationIds = () => {
+            try {
+                const rawValue = localStorage.getItem(seenStorageKey);
+                if (!rawValue) {
+                    return new Set();
+                }
+                const parsed = JSON.parse(rawValue);
+                if (!Array.isArray(parsed)) {
+                    return new Set();
+                }
+                return new Set(parsed.map((item) => Number(item)).filter((item) => Number.isFinite(item)));
+            } catch (_error) {
+                return new Set();
+            }
+        };
+
+        const seenNotificationIds = parseSeenNotificationIds();
+        const saveSeenNotificationIds = () => {
+            const ids = [...seenNotificationIds].slice(-150);
+            localStorage.setItem(seenStorageKey, JSON.stringify(ids));
+        };
+
+        const updateBadge = (count) => {
+            if (!badge) {
+                return;
+            }
+
+            const normalizedCount = Math.max(0, Number(count) || 0);
+            badge.textContent = String(normalizedCount);
+            badge.classList.toggle('hidden', normalizedCount === 0);
+        };
+
+        const playMeetingAlarmTone = () => {
+            if (!('AudioContext' in window || 'webkitAudioContext' in window)) {
+                return;
+            }
+
+            const AudioCtx = window.AudioContext || window.webkitAudioContext;
+            const context = new AudioCtx();
+
+            const playBeep = (startAt) => {
+                const oscillator = context.createOscillator();
+                const gainNode = context.createGain();
+                oscillator.type = 'sine';
+                oscillator.frequency.value = 880;
+                gainNode.gain.setValueAtTime(0.0001, startAt);
+                gainNode.gain.exponentialRampToValueAtTime(0.16, startAt + 0.02);
+                gainNode.gain.exponentialRampToValueAtTime(0.0001, startAt + 0.24);
+                oscillator.connect(gainNode);
+                gainNode.connect(context.destination);
+                oscillator.start(startAt);
+                oscillator.stop(startAt + 0.25);
+            };
+
+            const now = context.currentTime;
+            playBeep(now + 0.02);
+            playBeep(now + 0.34);
+            playBeep(now + 0.66);
+
+            window.setTimeout(() => {
+                context.close().catch(() => {
+                    return;
+                });
+            }, 1300);
+        };
+
+        const renderNotificationList = (items) => {
+            if (!list) {
+                return;
+            }
+
+            list.replaceChildren();
+            if (!Array.isArray(items) || !items.length) {
+                const emptyElement = document.createElement('p');
+                emptyElement.className = 'small-muted nav-notify-empty';
+                emptyElement.textContent = 'No unread notifications.';
+                list.appendChild(emptyElement);
+                return;
+            }
+
+            items.forEach((item) => {
+                const linkPath = item.link_path ? String(item.link_path) : "{{ url_for('profile_by_id', user_id=current_user.id) if current_user else '/' }}";
+
+                const anchor = document.createElement('a');
+                anchor.className = 'nav-notify-item';
+                anchor.href = linkPath;
+                anchor.dataset.notifyId = String(item.id || '');
+                anchor.dataset.notifyEvent = String(item.event_type || '');
+
+                const title = document.createElement('span');
+                title.textContent = String(item.message || 'Notification');
+                anchor.appendChild(title);
+
+                const time = document.createElement('span');
+                time.className = 'small-muted';
+                time.textContent = String(item.created_at || '');
+                anchor.appendChild(time);
+
+                list.appendChild(anchor);
+            });
+        };
+
+        const pushDesktopNotifications = (items) => {
+            if (!('Notification' in window)) {
+                return;
+            }
+
+            const notifyItems = Array.isArray(items)
+                ? items.filter((item) => Number.isFinite(Number(item.id)) && !seenNotificationIds.has(Number(item.id)))
+                : [];
+            if (!notifyItems.length) {
+                return;
+            }
+
+            const showNotifications = () => {
+                notifyItems.forEach((item, index) => {
+                    const notificationId = Number(item.id);
+                    seenNotificationIds.add(notificationId);
+
+                    const message = item.message ? String(item.message) : 'You have a new notification.';
+                    const linkPath = item.link_path ? String(item.link_path) : '';
+                    const eventType = item.event_type ? String(item.event_type) : '';
+
+                    try {
+                        const browserNotification = new Notification('SkillLink', {
+                            body: message,
+                            icon: iconUrl,
+                            tag: `skilllink-notify-${notificationId}-${index}`,
+                        });
+
+                        if (linkPath) {
+                            browserNotification.onclick = () => {
+                                window.focus();
+                                window.location.href = linkPath;
+                                browserNotification.close();
+                            };
+                        }
+                    } catch (_error) {
+                        return;
+                    }
+
+                    if (eventType === 'meeting_start') {
+                        playMeetingAlarmTone();
+                    }
+                });
+                saveSeenNotificationIds();
+            };
+
+            if (Notification.permission === 'granted') {
+                showNotifications();
+                return;
+            }
+
+            if (Notification.permission === 'default') {
+                Notification.requestPermission().then((permission) => {
+                    if (permission === 'granted') {
+                        showNotifications();
+                    }
+                }).catch(() => {
+                    return;
+                });
+            }
+        };
+
+        const refreshNotifications = async () => {
+            try {
+                const response = await fetch(notificationsApiUrl, {
+                    headers: {
+                        'X-Requested-With': 'XMLHttpRequest',
+                    },
+                    credentials: 'same-origin',
+                });
+                if (!response.ok) {
+                    return;
+                }
+
+                const result = await response.json().catch(() => ({}));
+                if (!result.ok) {
+                    return;
+                }
+
+                const items = Array.isArray(result.items) ? result.items : [];
+                updateBadge(Number(result.count || items.length));
+                renderNotificationList(items);
+                pushDesktopNotifications(items);
+            } catch (_error) {
+                return;
+            }
+        };
+
+        if (markReadForm) {
+            markReadForm.addEventListener('submit', async (event) => {
+                event.preventDefault();
+                try {
+                    const response = await fetch(markReadUrl, {
+                        method: 'POST',
+                        headers: {
+                            'X-CSRF-Token': csrfToken,
+                            'X-Requested-With': 'XMLHttpRequest',
+                        },
+                        credentials: 'same-origin',
+                    });
+                    if (!response.ok) {
+                        return;
+                    }
+                    await refreshNotifications();
+                } catch (_error) {
+                    return;
+                }
+            });
+        }
+
+        renderNotificationList(initialNotifications);
+        updateBadge({{ unread_notification_count }});
+        pushDesktopNotifications(initialNotifications);
+        window.setInterval(refreshNotifications, 30000);
+        refreshNotifications();
     })();
     </script>
     <script>
